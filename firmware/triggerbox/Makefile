@@ -5,5 +5,4 @@
 ARDUINO_DIR = /usr/share/arduino
 ARDUINO_PORT = /dev/ttyACM* /dev/ttyUSB*
 ARDUINO_LIBS =
-BOARD_TAG = leonardo
 include /usr/share/arduino/Arduino.mk
