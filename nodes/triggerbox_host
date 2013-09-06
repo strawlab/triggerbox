@@ -1,0 +1,378 @@
+#!/usr/bin/env python
+import serial
+import numpy as np
+import os, sys, time, threading, Queue, collections
+import struct
+import argparse
+
+import roslib; roslib.load_manifest('triggerbox')
+
+import rospy
+from triggerbox.time_model import get_time_model, TimeFitError
+from triggerbox.msg import TriggerClockModel
+
+import std_msgs
+
+def uint32(b0,b1,b2,b3):
+    return (b3 << 24) + (b2 << 16) + (b1 << 8) + b0
+
+def uint16(b0,b1):
+    return (b1 << 8) + b0
+
+if sys.platform.startswith('win'):
+    time_func = time.clock
+else:
+    time_func = time.time
+
+QUERY_DT = 1.0 # n seconds between clock info requests
+
+class NoValidSerialError(serial.serialutil.SerialException):
+    pass
+
+def _setup_serial(device=None):
+    port = device
+    if port is not None:
+        ports = [port]
+    else:
+        if sys.platform.startswith('linux'):
+            ports = ['/dev/ttyUSB0',
+                     '/dev/ttyACM0',
+                     ]
+        else:
+            raise RuntimeError('Do not know default serial ports on your '
+                               'platform.')
+    ser = None
+    for port in ports:
+        try:
+            ser = serial.Serial(port=port,
+                                timeout=0.01,
+                                baudrate=115200,
+                                )
+        except serial.serialutil.SerialException:
+            continue
+        else:
+            break
+    if ser is None:
+        raise NoValidSerialError('Could not find serial port at any of %r'%ports)
+    return ser
+
+class SerialThread(threading.Thread):
+    def __init__(self,name,args,device,write_channel_name,channel_name):
+        super(SerialThread,self).__init__(name=name)
+        self.__args=args
+        self.ICR1 = None
+        self.device=device
+        self.write_channel_name=write_channel_name
+        self.channel_name=channel_name
+
+    def _set_ICR1( self, new_value ):
+        chars = struct.pack('<H',new_value) # little-endian unsigned short
+        assert len(chars)==2
+        vals = [ord(c) for c in chars]
+        self.ICR1 = (vals[1] << 8) + vals[0]
+        assert self.ICR1==new_value
+        self.ser.write('T='+chars)
+
+    def run(self):
+        self.last_time = time_func() + 0.5 # give half a second to flush buffers
+        self._qi = 0
+        self._queries = collections.OrderedDict()
+
+        self._vquery_time = time_func()+5.0
+        self._version_check_started = False
+        self._version_check_done = False
+
+        self._name_check_started = False
+
+        self.time_q, self.outq = self.__args
+
+        self.ser = _setup_serial(device=self.device)
+        self.ser.open()
+
+        buf = ''
+        while 1:
+
+            # handle new commands
+            while 1:
+                try:
+                    cmd_tup = self.outq.get_nowait()
+                    cmd = cmd_tup[0]
+                    if cmd=='icr1':
+                        new_value = cmd_tup[1]
+                        self._set_ICR1( new_value )
+                    elif cmd=='stop_pulses_and_reset':
+                        self.ser.write('S0')
+                    elif cmd=='start_pulses':
+                        self.ser.write('S1')
+                except Queue.Empty:
+                    break
+
+            # get all pending data
+            buf += self.ser.read()
+
+            # handle pending data
+            buf = self._h(buf)
+
+            # perform any ongoing tasks
+            now = time_func()
+            if (now - self.last_time) > QUERY_DT:
+                # request sample
+
+                self._queries[ self._qi ] = now
+
+                self.ser.write( 'P'+chr(self._qi) )
+
+                self._qi = (self._qi + 1) % 256
+                self.last_time = now
+
+            # version check
+            if not self._version_check_done:
+                if not self._version_check_started:
+                    if now >= self._vquery_time:
+                        self.ser.write( 'V?' )
+                        self._version_check_started = True
+                if (now - self._vquery_time) > 5.0:
+                    raise RuntimeError('no version response')
+
+
+    def _handle_version(self, value, pulsenumber, count):
+        assert value==11
+        self._vquery_time = time_func()
+        self._version_check_done = True
+
+        # version check is OK. write channel name if desired.
+        if self.write_channel_name is not None:
+            payload = 'N='+self.write_channel_name+'\0'
+            print 'sending payload: %r' % payload
+            self.ser.write( payload )
+            self.write_channel_name = None # don't send again
+
+        # channel name check
+        if not self._name_check_started:
+            self.ser.write( 'N?' )
+            self._name_check_started = True
+
+    def _handle_name(self,actual_name):
+        rospy.loginfo('connected to trigger channel %r' % actual_name )
+        if self.channel_name is not None:
+            assert self.channel_name==actual_name
+            self.channel_name=None
+
+    def _handle_returned_timestamp(self, qi, pulsenumber, count):
+        now = time_func()
+
+        while len(self._queries) > 50:
+            old_qi = self._queries.popitem(last=False)
+            rospy.logwarn('never got return for query %d'%old_qi)
+
+        try:
+            send_timestamp = self._queries.pop( qi )
+        except KeyError:
+            rospy.logwarn('could not find original data for query %d'%qi)
+            return
+
+        max_error = now-send_timestamp
+        if max_error > 0.015: # 15 msec cutoff
+            rospy.logwarn(
+                'clock sample took %.1f msec. Ignoring value.'%( max_error*1e3))
+            return
+
+        ino_time_estimate = (now+send_timestamp)*0.5
+
+        if self.ICR1 is None:
+            return
+
+        frac = float(count)/self.ICR1
+        ino_stamp = pulsenumber + frac
+
+        self.time_q.put( (ino_time_estimate, ino_stamp) )
+
+    def _h(self,buf):
+        result = buf
+        if len(buf) >= 3: # header, length, checksum is minimum
+            valid = False
+
+            packet_type = buf[0]
+            payload_len = ord(buf[1])
+
+            min_valid_packet_size = 3+payload_len  # header (2) + payload + checksum (1)
+            if len(buf) >= min_valid_packet_size:
+                expected_chksum = ord(buf[2+payload_len])
+
+                check_buf = buf[2:-1]
+                bytes = [ord(char) for char in check_buf]
+                actual_chksum = sum( bytes ) % 256
+
+                if actual_chksum == expected_chksum:
+                    valid = True
+                    n_used_chars = len(check_buf)+3
+                else:
+                    raise RuntimeError('checksum mismatch')
+
+                if packet_type in ('P','V','L'):
+                    assert payload_len==7
+                    value = bytes[0]
+                    e0,e1,e2,e3 = bytes[1:5]
+                    t0,t1 = bytes[5:7]
+
+                    pulsenumber = uint32(e0,e1,e2,e3)
+                    count = uint16(t0,t1)
+
+                    if packet_type == 'P':
+                        self._handle_returned_timestamp(value, pulsenumber, count )
+                    elif packet_type == 'V':
+                        self._handle_version(value, pulsenumber, count )
+                    elif packet_type == 'L':
+                        pass
+
+                elif packet_type=='N':
+                    self._handle_name(check_buf)
+                else:
+                    raise ValueError('unknown packet type')
+
+            if valid:
+                result = buf[n_used_chars:]
+
+        return result
+
+class TriggerboxHost:
+    def __init__(self, device=None, write_channel_name=None, channel_name=None):
+        rospy.init_node('triggerbox_host')
+        self.pub = rospy.Publisher('~time_model', TriggerClockModel)
+        rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32, self.set_triggerrate)
+
+        ensure_valid_name(write_channel_name)
+        ensure_valid_name(channel_name)
+
+        self.channel_name=channel_name
+        self.time_q = Queue.Queue()
+        self.outq = Queue.Queue()
+
+        self.publish_models = True
+
+        self.times = []
+
+        self.ser_thread = SerialThread(name="serial thread",
+                                       args=(self.time_q,self.outq),
+                                       device=device,
+                                       write_channel_name=write_channel_name,
+                                       channel_name=channel_name,
+                                       )
+        self.ser_thread.daemon = True
+        self.ser_thread.start()
+
+        self.set_triggerrate(std_msgs.msg.Float32(200.0))
+
+        # query for new data every .1 seconds
+        rospy.Timer(rospy.Duration(0.1), self.on_get_new_data)
+
+        # trim data every 2 seconds
+        rospy.Timer(rospy.Duration(2.0), self.on_trim_data)
+
+    def set_triggerrate(self,msg):
+        rate_ideal = msg.data
+        rospy.loginfo('received set_triggerrate command with target of %s'%rate_ideal)
+        self.on_clear_data()
+
+        xtal = 16e6 # 16 MHz clock
+        base_clock = xtal/8.0 # prescalar = 8
+        new_top_ideal = base_clock/rate_ideal
+        new_top_actual = int(np.clip(np.round(new_top_ideal),0,0xFFFF))
+        rate_actual = base_clock/new_top_actual
+        rospy.loginfo( 'desired rate %s (actual rate %s) using ICR1 %x' % (rate_ideal,
+                                                                           rate_actual,
+                                                                           new_top_actual ) )
+
+        self.publish_models = False
+        self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
+        self.outq.put( ('icr1', new_top_actual) ) # set triggerrate
+        time.sleep(2.0) # give system some time to so old requests are processed
+        self.on_clear_data() # clear old data
+        self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
+        self.publish_models = True
+
+    def on_clear_data(self):
+        self.times = []
+        self.time_model = None
+
+    def on_trim_data(self,_=None):
+        keep_n_times = 500
+
+        if len(self.times) > keep_n_times:
+            del self.times[-keep_n_times:]
+        return True
+
+    def on_get_new_data(self, _=None):
+        if not self.ser_thread.is_alive():
+            msg = 'serial port thread is not alive'
+            rospy.logfatal(msg)
+            rospy.signal_shutdown(msg)
+            return
+
+        # get all pending data
+
+        new_time = False
+        while 1:
+            try:
+                self.times.append( self.time_q.get_nowait() )
+                new_time = True
+            except Queue.Empty:
+                break
+
+        if new_time and len(self.times) > 3:
+            # require 3 samples to start attempting to fit model
+            tdata = np.array(self.times[-100:])
+            try:
+                self.time_model = get_time_model(tdata[:,1], tdata[:,0])
+
+                msg = TriggerClockModel()
+                msg.gain = self.time_model.gain
+                msg.offset = self.time_model.offset
+                if self.publish_models:
+                    self.pub.publish( msg )
+
+                approx_freq = 1.0/msg.gain
+                rospy.logdebug('approximate timer frequency: %s'%(
+                    approx_freq,))
+
+            except TimeFitError, err:
+                rospy.logwarn('error fitting time_model: %s'%err)
+
+def ensure_valid_name(channel_name):
+    if channel_name is None:
+        return
+    assert len(channel_name) > 0
+    assert len(channel_name) < 250
+    assert channel_name.find(chr(0)) == -1
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--device', type=str, default=None,
+                        help='specify the USB device (e.g. "/dev/ttyACM0")')
+
+    parser.add_argument('--write-channel-name', type=str, default=None,
+                        help='write NAME to EEPROM of device')
+
+    parser.add_argument('--channel-name', type=str, default=None,
+                        help='only use device with NAME in EEPROM')
+
+    argv = rospy.myargv()
+    args = parser.parse_args(argv[1:])
+
+
+    argv = rospy.myargv()
+    args = parser.parse_args(argv[1:])
+
+    if ((args.write_channel_name is not None) and
+        (args.channel_name is not None)):
+        raise RuntimeError('At most, one of --write-channel-name and '
+                           '--channel-name may be specified at once')
+
+    tb = TriggerboxHost(device=args.device,
+                        write_channel_name=args.write_channel_name,
+                        channel_name=args.channel_name,
+                        )
+    rospy.spin()
+
+if __name__=='__main__':
+    main()
