@@ -362,7 +362,7 @@ class TriggerboxHost:
             # require 3 samples to start attempting to fit model
             tdata = np.array(self.times[-100:])
             try:
-                self.time_model = get_time_model(tdata[:,1], tdata[:,0])
+                self.time_model = get_time_model(tdata[:,1], tdata[:,0], max_residual=0.1)
 
                 msg = TriggerClockModel()
                 msg.gain = self.time_model.gain
