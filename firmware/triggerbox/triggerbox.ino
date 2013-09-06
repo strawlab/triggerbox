@@ -359,10 +359,18 @@ struct timed_sample {
 };
 
 // Pin numbers -----------------------------------------------------------------
-#define LEDPin 13
+// PWM out for trigger - pin 9
+#define LEDPin 2
+#ifdef WITH_AOUT
+const unsigned short AOUT_CS = 10;
+const unsigned short AOUT_LDAC = 7;
+#endif
 
-// Global variable for clock measurement ---------------------------------------
+// Global variables ------------------------------------------------------------
 volatile pulsenumber_dtype pulsenumber=0;
+#ifdef WITH_AOUT
+MCP4822 analogOut = MCP4822(AOUT_CS,AOUT_LDAC);
+#endif
 
 // Interrupt service routine for timer1 compare -------------------------------
 ISR(TIMER1_COMPA_vect)
@@ -400,6 +408,15 @@ void setup_timer1() {
 
 // Standard arduino setup function ---------------------------------------------
 void setup() {
+
+    SPI.setDataMode(SPI_MODE0);
+    SPI.setBitOrder(MSBFIRST);
+    SPI.setClockDivider(SPI_CLOCK_DIV8);
+    SPI.begin();
+
+#ifdef WITH_AOUT
+    analogOut.setGain2X_AB();
+#endif
 
     pinMode(LEDPin, OUTPUT);
     digitalWrite(LEDPin, 0);
@@ -564,4 +581,14 @@ void loop() {
         }
 
     }
+
+#ifdef WITH_AOUT
+    static int cnt=0;
+    analogOut.setValue_AB(cnt,4095-cnt);
+    cnt += 20;
+    if (cnt > 4095) {
+        cnt = 0;
+    }
+#endif
+
 }
