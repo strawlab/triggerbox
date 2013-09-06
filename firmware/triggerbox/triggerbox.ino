@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 
 triggerbox - trigger box for arduino
 ====================================
@@ -430,6 +430,13 @@ void setup() {
 }
 
 // Send data with our simple protocol to the host computer ---------------------
+static char Serial_read_blocking() {
+    while (Serial.available() == 0) {
+        delay(10);
+    }
+    return Serial.read();
+}
+
 static inline void send_data_string(String* s, const char header) {
     uint8_t N = s->length();
 
@@ -525,19 +532,13 @@ void loop() {
 
         } else if (cmd=='T') {
             // TOP value
-            char value0, value1;
+            uint8_t value0, value1;
             uint16_t new_icr1;
 
             if (value=='=') {
-                while (Serial.available() == 0) {
-                    delay(10);
-                }
-                value0 = Serial.read();
-                while (Serial.available() == 0) {
-                    delay(10);
-                }
-                value1 = Serial.read();
-                new_icr1 = (value1 << 8) + value0;
+                value0 = Serial_read_blocking();
+                value1 = Serial_read_blocking();
+                new_icr1 = ((uint16_t)value1 << 8) + value0;
                 ICR1 = new_icr1;
             }
 
