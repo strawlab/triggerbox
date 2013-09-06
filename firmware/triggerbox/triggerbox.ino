@@ -359,8 +359,8 @@ struct timed_sample {
 };
 
 // Pin numbers -----------------------------------------------------------------
-// PWM out for trigger - pin 9
-#define LEDPin 2
+const unsigned short TrigPin = 9;
+const unsigned short LEDPin = 2;
 #ifdef WITH_AOUT
 const unsigned short AOUT_CS = 10;
 const unsigned short AOUT_LDAC = 7;
@@ -421,7 +421,7 @@ void setup() {
     pinMode(LEDPin, OUTPUT);
     digitalWrite(LEDPin, 0);
 
-    pinMode(9, OUTPUT);
+    pinMode(TrigPin, OUTPUT);
 
     // start serial port at 115200 bps:
     Serial.begin(115200);
