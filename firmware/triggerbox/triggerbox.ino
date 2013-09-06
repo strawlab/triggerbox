@@ -542,6 +542,25 @@ void loop() {
                 ICR1 = new_icr1;
             }
 
+        } else if (cmd=='O') {
+            // AOUT values
+            uint8_t aout0_0, aout0_1,   aout1_0, aout1_1;
+            int aout0, aout1;
+
+            if (value=='=') {
+                aout0_0 = Serial_read_blocking();
+                aout0_1 = Serial_read_blocking();
+                aout0 = ((int)aout0_1 << 8) + aout0_0;
+
+                aout1_0 = Serial_read_blocking();
+                aout1_1 = Serial_read_blocking();
+                aout1 = ((int)aout1_1 << 8) + aout1_0;
+
+#ifdef WITH_AOUT
+                analogOut.setValue_AB(aout0, aout1);
+#endif
+            }
+
         } else if (cmd=='N') {
             // Channel name
             char next_byte;
@@ -582,14 +601,5 @@ void loop() {
         }
 
     }
-
-#ifdef WITH_AOUT
-    static int cnt=0;
-    analogOut.setValue_AB(cnt,4095-cnt);
-    cnt += 20;
-    if (cnt > 4095) {
-        cnt = 0;
-    }
-#endif
 
 }

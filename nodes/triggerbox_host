@@ -9,7 +9,7 @@ import roslib; roslib.load_manifest('triggerbox')
 
 import rospy
 from triggerbox.time_model import get_time_model, TimeFitError
-from triggerbox.msg import TriggerClockModel
+from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw
 
 import std_msgs
 
@@ -25,6 +25,11 @@ else:
     time_func = time.time
 
 QUERY_DT = 1.0 # n seconds between clock info requests
+
+# Measured on 6 September 2013
+LOW_VOLTS = 0.0063
+HIGH_VOLTS = 4.13
+RANGE_VOLTS = HIGH_VOLTS-LOW_VOLTS
 
 class NoValidSerialError(serial.serialutil.SerialException):
     pass
@@ -73,6 +78,15 @@ class SerialThread(threading.Thread):
         assert self.ICR1==new_value
         self.ser.write('T='+chars)
 
+    def _set_AOUT( self, aout0, aout1 ):
+        aout0_chars = struct.pack('<H', aout0) # little-endian unsigned short
+        assert len(aout0_chars)==2
+        aout1_chars = struct.pack('<H', aout1) # little-endian unsigned short
+        assert len(aout1_chars)==2
+        chars = aout0_chars + aout1_chars
+        vals = [ord(c) for c in chars]
+        self.ser.write('O='+chars)
+
     def run(self):
         self.last_time = time_func() + 0.5 # give half a second to flush buffers
         self._qi = 0
@@ -104,6 +118,9 @@ class SerialThread(threading.Thread):
                         self.ser.write('S0')
                     elif cmd=='start_pulses':
                         self.ser.write('S1')
+                    elif cmd=='AOut':
+                        aout0, aout1 = cmd_tup[1:3]
+                        self._set_AOUT( aout0, aout1 )
                 except Queue.Empty:
                     break
 
@@ -143,7 +160,6 @@ class SerialThread(threading.Thread):
         # version check is OK. write channel name if desired.
         if self.write_channel_name is not None:
             payload = 'N='+self.write_channel_name+'\0'
-            print 'sending payload: %r' % payload
             self.ser.write( payload )
             self.write_channel_name = None # don't send again
 
@@ -235,11 +251,21 @@ class SerialThread(threading.Thread):
 
         return result
 
+def volts_to_dac(volts):
+    v = np.clip(volts,LOW_VOLTS,HIGH_VOLTS)
+    v0 = v-LOW_VOLTS
+    v0_frac = v0/RANGE_VOLTS
+    dac_float = v0_frac*4095
+    dac = int(np.round(dac_float))
+    return dac
+
 class TriggerboxHost:
     def __init__(self, device=None, write_channel_name=None, channel_name=None):
         rospy.init_node('triggerbox_host')
         self.pub = rospy.Publisher('~time_model', TriggerClockModel)
         rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32, self.set_triggerrate)
+        rospy.Subscriber('~aout_volts', AOutVolts, self.set_aout_ab_volts)
+        rospy.Subscriber('~aout_raw', AOutRaw, self.set_aout_ab_raw)
 
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
@@ -268,6 +294,19 @@ class TriggerboxHost:
 
         # trim data every 2 seconds
         rospy.Timer(rospy.Duration(2.0), self.on_trim_data)
+
+    def set_aout_ab_volts(self,msg):
+        aout0_v = msg.aout0
+        aout1_v = msg.aout1
+
+        aout0 = volts_to_dac(aout0_v)
+        aout1 = volts_to_dac(aout1_v)
+        self.outq.put( ('AOut', aout0, aout1) ) # set AOUT
+
+    def set_aout_ab_raw(self,msg):
+        aout0 = msg.aout0
+        aout1 = msg.aout1
+        self.outq.put( ('AOut', aout0, aout1) ) # set AOUT
 
     def set_triggerrate(self,msg):
         rate_ideal = msg.data
