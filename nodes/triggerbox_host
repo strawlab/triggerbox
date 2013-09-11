@@ -69,6 +69,7 @@ class SerialThread(threading.Thread):
         self.device=device
         self.write_channel_name=write_channel_name
         self.channel_name=channel_name
+        self._name_check_done = False
 
     def _set_ICR1( self, new_value ):
         chars = struct.pack('<H',new_value) # little-endian unsigned short
@@ -96,7 +97,7 @@ class SerialThread(threading.Thread):
         self._version_check_started = False
         self._version_check_done = False
 
-        self._name_check_started = False
+        self._name_check_started = None
 
         self.time_q, self.outq = self.__args
 
@@ -151,11 +152,16 @@ class SerialThread(threading.Thread):
                 if (now - self._vquery_time) > 5.0:
                     raise RuntimeError('no version response')
 
+            if not self._name_check_done:
+                if self._name_check_started is not None and (now - self._name_check_started) > 5.0:
+                    raise RuntimeError('no channel name check response')
 
     def _handle_version(self, value, pulsenumber, count):
         assert value==11
         self._vquery_time = time_func()
         self._version_check_done = True
+
+        rospy.loginfo('connected to triggerbox firmware version %d' % value )
 
         # version check is OK. write channel name if desired.
         if self.write_channel_name is not None:
@@ -164,15 +170,17 @@ class SerialThread(threading.Thread):
             self.write_channel_name = None # don't send again
 
         # channel name check
-        if not self._name_check_started:
+        if self._name_check_started is None:
             self.ser.write( 'N?' )
-            self._name_check_started = True
+            self._name_check_started = time_func()
+            rospy.loginfo('querying channel name')
 
     def _handle_name(self,actual_name):
         rospy.loginfo('connected to trigger channel %r' % actual_name )
         if self.channel_name is not None:
             assert self.channel_name==actual_name
             self.channel_name=None
+        self._name_check_done = True
 
     def _handle_returned_timestamp(self, qi, pulsenumber, count):
         now = time_func()
