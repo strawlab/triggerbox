@@ -178,7 +178,7 @@ class SerialThread(threading.Thread):
     def _handle_name(self,actual_name):
         rospy.loginfo('connected to trigger channel %r' % actual_name )
         if self.channel_name is not None:
-            assert self.channel_name==actual_name
+            assert self.channel_name==actual_name, 'expected: %r' % self.channel_name
             self.channel_name=None
         self._name_check_done = True
 
@@ -388,7 +388,7 @@ class TriggerboxHost:
 def ensure_valid_name(channel_name):
     if channel_name is None:
         return
-    assert len(channel_name) > 0
+    assert len(channel_name) >= 0
     assert len(channel_name) < 250
     assert channel_name.find(chr(0)) == -1
 
