@@ -22,4 +22,4 @@ Install the required software:
 
 Make the firmware and upload it onto your Arduino device:
 
-    make BOARD_TAG=uno upload # <-- substitute "uno" for the name of your board
+    make upload
