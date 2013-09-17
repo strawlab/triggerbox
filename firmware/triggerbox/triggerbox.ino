@@ -368,6 +368,11 @@ const unsigned short AOUT_LDAC = 7;
 
 // Global variables ------------------------------------------------------------
 volatile pulsenumber_dtype pulsenumber=0;
+    // ---- set TCCR1B ----------
+    // high bits = 0,0,0
+    //WGM13, WGM12 = 1,1
+    // CS1 = 0,1,0 (starts timer1 CS=8) (clock select)
+uint8_t tccr1b_when_running = 0x1A;
 #ifdef WITH_AOUT
 MCP4822 analogOut = MCP4822(AOUT_CS,AOUT_LDAC);
 #endif
@@ -394,12 +399,7 @@ void setup_timer1() {
     // COM1B1:0 = 1,0 clear OC1B on compare match
     // WGM11, WGM10 = 1,0
     TCCR1A = 0xAA;
-
-    // ---- set TCCR1B ----------
-    // high bits = 0,0,0
-    //WGM13, WGM12 = 1,1
-    // CS1 = 0,1,0 (starts timer1 CS=8) (clock select)
-    TCCR1B = 0x1A;
+    TCCR1B = tccr1b_when_running;
 
     TIMSK1 |= (1 << OCIE1A);
 
@@ -508,7 +508,7 @@ void loop() {
             // version request
             static struct timed_sample version_request;
 
-            version_request.value = 11;
+            version_request.value = 12;
 
             uint8_t SaveSREG_ = SREG;   // save interrupt flag
             cli(); // disable interrupts
@@ -527,19 +527,28 @@ void loop() {
                 pulsenumber = 0;
             } else if (value=='1') {
                 // start clock
-                TCCR1B = 0x1A;
+                TCCR1B = tccr1b_when_running;
             }
 
         } else if (cmd=='T') {
             // TOP value
             uint8_t value0, value1;
+            char prescaler_key;
             uint16_t new_icr1;
 
             if (value=='=') {
                 value0 = Serial_read_blocking();
                 value1 = Serial_read_blocking();
+                prescaler_key = Serial_read_blocking();
                 new_icr1 = ((uint16_t)value1 << 8) + value0;
                 ICR1 = new_icr1;
+                if (prescaler_key=='1') {
+                    // prescaler = 8
+                    tccr1b_when_running = 0x1A;
+                } else if (prescaler_key=='2') {
+                    // prescaler = 64
+                    tccr1b_when_running = 0x1B;
+                }
             }
 
         } else if (cmd=='O') {

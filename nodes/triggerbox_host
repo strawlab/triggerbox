@@ -65,18 +65,25 @@ class SerialThread(threading.Thread):
     def __init__(self,name,args,device,write_channel_name,channel_name):
         super(SerialThread,self).__init__(name=name)
         self.__args=args
-        self.ICR1 = None
+        self.ICR1_AND_PRESCALER = None
         self.device=device
         self.write_channel_name=write_channel_name
         self.channel_name=channel_name
         self._name_check_done = False
 
-    def _set_ICR1( self, new_value ):
-        chars = struct.pack('<H',new_value) # little-endian unsigned short
+    def _set_ICR1_AND_PRESCALER( self, new_value ):
+        icr1, prescaler = new_value
+        chars = struct.pack('<H',icr1) # little-endian unsigned short
         assert len(chars)==2
         vals = [ord(c) for c in chars]
-        self.ICR1 = (vals[1] << 8) + vals[0]
-        assert self.ICR1==new_value
+        self.ICR1_AND_PRESCALER = ((vals[1] << 8) + vals[0], prescaler)
+        assert self.ICR1_AND_PRESCALER==new_value
+        if prescaler==8:
+            chars += '1'
+        elif prescaler==64:
+            chars += '2'
+        else:
+            raise ValueError('unsupported prescaler: %s'%prescaler)
         self.ser.write('T='+chars)
 
     def _set_AOUT( self, aout0, aout1 ):
@@ -112,9 +119,9 @@ class SerialThread(threading.Thread):
                 try:
                     cmd_tup = self.outq.get_nowait()
                     cmd = cmd_tup[0]
-                    if cmd=='icr1':
+                    if cmd=='icr1_and_prescaler':
                         new_value = cmd_tup[1]
-                        self._set_ICR1( new_value )
+                        self._set_ICR1_AND_PRESCALER( new_value )
                     elif cmd=='stop_pulses_and_reset':
                         self.ser.write('S0')
                     elif cmd=='start_pulses':
@@ -157,7 +164,7 @@ class SerialThread(threading.Thread):
                     raise RuntimeError('no channel name check response')
 
     def _handle_version(self, value, pulsenumber, count):
-        assert value==11
+        assert value==12
         self._vquery_time = time_func()
         self._version_check_done = True
 
@@ -203,10 +210,11 @@ class SerialThread(threading.Thread):
 
         ino_time_estimate = (now+send_timestamp)*0.5
 
-        if self.ICR1 is None:
+        if self.ICR1_AND_PRESCALER is None:
             return
 
-        frac = float(count)/self.ICR1
+        icr1, prescaler = self.ICR1_AND_PRESCALER
+        frac = float(count)/icr1
         ino_stamp = pulsenumber + frac
 
         self.time_q.put( (ino_time_estimate, ino_stamp) )
@@ -316,21 +324,40 @@ class TriggerboxHost:
         self.outq.put( ('AOut', aout0, aout1) ) # set AOUT
 
     def set_triggerrate(self,msg):
+        def get_rate(rate_ideal, prescaler):
+            xtal = 16e6 # 16 MHz clock
+            base_clock = xtal/float(prescaler)
+            new_top_ideal = base_clock/rate_ideal
+            new_icr1 = int(np.clip(np.round(new_top_ideal),0,0xFFFF))
+            rate_actual = base_clock/new_icr1
+            return new_icr1, rate_actual
+
         rate_ideal = msg.data
         rospy.loginfo('received set_triggerrate command with target of %s'%rate_ideal)
         self.on_clear_data()
 
-        xtal = 16e6 # 16 MHz clock
-        base_clock = xtal/8.0 # prescalar = 8
-        new_top_ideal = base_clock/rate_ideal
-        new_top_actual = int(np.clip(np.round(new_top_ideal),0,0xFFFF))
-        rate_actual = base_clock/new_top_actual
-        rospy.loginfo( 'desired rate %s (actual rate %s) using ICR1 %x' % (rate_ideal,
-                                                                           rate_actual,
-                                                                           new_top_actual ) )
+        icr1_8, rate_actual_8 = get_rate( rate_ideal, 8)
+        icr1_64, rate_actual_64 = get_rate( rate_ideal, 64)
+
+        error_8  = abs(rate_ideal-rate_actual_8)
+        error_64 = abs(rate_ideal-rate_actual_64)
+
+        if error_8 < error_64:
+            new_icr1 = icr1_8
+            rate_actual = rate_actual_8
+            prescaler = 8
+        else:
+            new_icr1 = icr1_64
+            rate_actual = rate_actual_64
+            prescaler = 64
+
+        rospy.loginfo( 'desired rate %s (actual rate %s) using ICR1_AND_PRESCALER %x %d' % (rate_ideal,
+                                                                                            rate_actual,
+                                                                                            new_icr1,
+                                                                                            prescaler) )
 
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
-        self.outq.put( ('icr1', new_top_actual) ) # set triggerrate
+        self.outq.put( ('icr1_and_prescaler', (new_icr1,prescaler)) ) # set triggerrate
         self.on_clear_data() # clear old data
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
 
