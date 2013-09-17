@@ -184,10 +184,10 @@ class SerialThread(threading.Thread):
 
     def _handle_name(self,actual_name):
         rospy.loginfo('connected to trigger channel %r' % actual_name )
+        self._name_check_done = True
         if self.channel_name is not None:
             assert self.channel_name==actual_name, 'expected: %r' % self.channel_name
             self.channel_name=None
-        self._name_check_done = True
 
     def _handle_returned_timestamp(self, qi, pulsenumber, count):
         now = time_func()
@@ -279,10 +279,7 @@ class TriggerboxHost:
     def __init__(self, device=None, write_channel_name=None, channel_name=None):
         rospy.init_node('triggerbox_host')
         self.pub = rospy.Publisher('~time_model', TriggerClockModel)
-        rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32, self.set_triggerrate)
-        rospy.Subscriber('~pause_and_reset', std_msgs.msg.Float32, self.pause_and_reset)
-        rospy.Subscriber('~aout_volts', AOutVolts, self.set_aout_ab_volts)
-        rospy.Subscriber('~aout_raw', AOutRaw, self.set_aout_ab_raw)
+        self.rate_pub = rospy.Publisher('~expected_framerate', std_msgs.msg.Float32)
 
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
@@ -290,6 +287,9 @@ class TriggerboxHost:
         self.channel_name=channel_name
         self.time_q = Queue.Queue()
         self.outq = Queue.Queue()
+
+        self.expected_trigger_rate = np.nan
+        self.set_triggerrate(std_msgs.msg.Float32(200.0)) # calls self.on_emit_framerate()
 
         self.times = []
 
@@ -302,13 +302,28 @@ class TriggerboxHost:
         self.ser_thread.daemon = True
         self.ser_thread.start()
 
-        self.set_triggerrate(std_msgs.msg.Float32(200.0))
-
         # query for new data every .1 seconds
         rospy.Timer(rospy.Duration(0.1), self.on_get_new_data)
 
         # trim data every 2 seconds
         rospy.Timer(rospy.Duration(2.0), self.on_trim_data)
+
+        # emit expected frame rate every 5 seconds
+        rospy.Timer(rospy.Duration(5.0), self.on_emit_framerate)
+
+        rospy.loginfo('Waiting until serial device confirmed...')
+        while True:
+            if not self.ser_thread.is_alive():
+                raise RuntimeError('serial thread died')
+            if self.ser_thread._name_check_done:
+                break
+            time.sleep(0.1)
+        rospy.loginfo('Serial device is now confirmed.')
+
+        rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32, self.set_triggerrate)
+        rospy.Subscriber('~pause_and_reset', std_msgs.msg.Float32, self.pause_and_reset)
+        rospy.Subscriber('~aout_volts', AOutVolts, self.set_aout_ab_volts)
+        rospy.Subscriber('~aout_raw', AOutRaw, self.set_aout_ab_raw)
 
     def set_aout_ab_volts(self,msg):
         aout0_v = msg.aout0
@@ -355,18 +370,34 @@ class TriggerboxHost:
                                                                                             rate_actual,
                                                                                             new_icr1,
                                                                                             prescaler) )
+        self.expected_trigger_rate = np.nan
+        self.on_emit_framerate()
 
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
         self.outq.put( ('icr1_and_prescaler', (new_icr1,prescaler)) ) # set triggerrate
         self.on_clear_data() # clear old data
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
 
+        self.expected_trigger_rate = rate_actual
+        self.on_emit_framerate()
+
     def pause_and_reset(self,msg=None):
+        orig_value = self.expected_trigger_rate
+        self.expected_trigger_rate = np.nan
+        self.on_emit_framerate()
+
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
         self.on_clear_data() # clear old data
         time.sleep(msg.data)
         self.on_clear_data() # clear old data
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
+
+        self.expected_trigger_rate = orig_value
+        self.on_emit_framerate()
+
+    def on_emit_framerate(self,_=None):
+        msg = std_msgs.msg.Float32(self.expected_trigger_rate)
+        self.rate_pub.publish(msg)
 
     def on_clear_data(self):
         self.times = []
