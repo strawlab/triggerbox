@@ -272,6 +272,7 @@ class TriggerboxHost:
         rospy.init_node('triggerbox_host')
         self.pub = rospy.Publisher('~time_model', TriggerClockModel)
         rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32, self.set_triggerrate)
+        rospy.Subscriber('~pause_and_reset', std_msgs.msg.Float32, self.pause_and_reset)
         rospy.Subscriber('~aout_volts', AOutVolts, self.set_aout_ab_volts)
         rospy.Subscriber('~aout_raw', AOutRaw, self.set_aout_ab_raw)
 
@@ -330,6 +331,13 @@ class TriggerboxHost:
 
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
         self.outq.put( ('icr1', new_top_actual) ) # set triggerrate
+        self.on_clear_data() # clear old data
+        self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
+
+    def pause_and_reset(self,msg=None):
+        self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
+        self.on_clear_data() # clear old data
+        time.sleep(msg.data)
         self.on_clear_data() # clear old data
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
 
