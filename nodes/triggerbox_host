@@ -282,8 +282,6 @@ class TriggerboxHost:
         self.time_q = Queue.Queue()
         self.outq = Queue.Queue()
 
-        self.publish_models = True
-
         self.times = []
 
         self.ser_thread = SerialThread(name="serial thread",
@@ -330,17 +328,19 @@ class TriggerboxHost:
                                                                            rate_actual,
                                                                            new_top_actual ) )
 
-        self.publish_models = False
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
         self.outq.put( ('icr1', new_top_actual) ) # set triggerrate
-        time.sleep(2.0) # give system some time to so old requests are processed
         self.on_clear_data() # clear old data
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
-        self.publish_models = True
 
     def on_clear_data(self):
         self.times = []
         self.time_model = None
+        msg = TriggerClockModel()
+        msg.gain = np.nan
+        msg.offset = np.nan
+        self.pub.publish( msg )
+
 
     def on_trim_data(self,_=None):
         keep_n_times = 500
@@ -371,19 +371,17 @@ class TriggerboxHost:
             tdata = np.array(self.times[-100:])
             try:
                 self.time_model = get_time_model(tdata[:,1], tdata[:,0], max_residual=0.1)
-
+            except TimeFitError, err:
+                rospy.logwarn('error fitting time_model: %s'%err)
+            else:
                 msg = TriggerClockModel()
                 msg.gain = self.time_model.gain
                 msg.offset = self.time_model.offset
-                if self.publish_models:
-                    self.pub.publish( msg )
+                self.pub.publish( msg )
 
                 approx_freq = 1.0/msg.gain
                 rospy.logdebug('approximate timer frequency: %s'%(
                     approx_freq,))
-
-            except TimeFitError, err:
-                rospy.logwarn('error fitting time_model: %s'%err)
 
 def ensure_valid_name(channel_name):
     if channel_name is None:
