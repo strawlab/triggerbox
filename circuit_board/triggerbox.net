@@ -1,0 +1,128 @@
+# EESchema Netlist Version 1.1 created  Sun 01 Dec 2013 09:10:46 PM CET
+(
+ ( /529B8B36 LED-0805 D1 LED
+  ( 1 N-000029 )
+  ( 2 N-000030 )
+ )
+ ( /529B900F BNC_horizontal P1 BNC
+  ( 1 N-000006 )
+  ( 2 GND )
+ )
+ ( /529B9013 BNC_horizontal P2 BNC
+  ( 1 N-000005 )
+  ( 2 GND )
+ )
+ ( /529B9003 BNC_horizontal P3 BNC
+  ( 1 N-000028 )
+  ( 2 GND )
+ )
+ ( /529B9008 BNC_horizontal P4 BNC
+  ( 1 N-000007 )
+  ( 2 GND )
+ )
+ ( /529B8FB0 BNC_horizontal P5 BNC
+  ( 1 N-000003 )
+  ( 2 GND )
+ )
+ ( /529B8FB9 BNC_horizontal P6 BNC
+  ( 1 N-000036 )
+  ( 2 GND )
+ )
+ ( /529B8FC2 BNC_horizontal P7 BNC
+  ( 1 N-000036 )
+  ( 2 GND )
+ )
+ ( /529B8FC7 BNC_horizontal P8 BNC
+  ( 1 N-000002 )
+  ( 2 GND )
+ )
+ ( /529B8FCD BNC_horizontal P9 BNC
+  ( 1 N-000002 )
+  ( 2 GND )
+ )
+ ( /529B8FDE BNC_horizontal P10 BNC
+  ( 1 N-000001 )
+  ( 2 GND )
+ )
+ ( /529B8ADF SM0805 R1 220
+  ( 1 GND )
+  ( 2 N-000030 )
+ )
+ ( /529B88A3 DIP-8__300 U1 MCP4822
+  ( 1 N-000031 )
+  ( 2 N-000019 )
+  ( 3 N-000032 )
+  ( 4 N-000020 )
+  ( 5 N-000013 )
+  ( 6 N-000005 )
+  ( 7 GND )
+  ( 8 N-000006 )
+ )
+ ( /529B84F2 arduino_nano U2 ARDUINO_NANO
+  ( 1 ? )
+  ( 2 ? )
+  ( 3 ? )
+  ( 4 GND )
+  ( 5 N-000029 )
+  ( 6 ? )
+  ( 7 ? )
+  ( 8 ? )
+  ( 9 ? )
+  ( 10 N-000013 )
+  ( 11 ? )
+  ( 12 N-000017 )
+  ( 13 N-000019 )
+  ( 14 N-000020 )
+  ( 15 ? )
+  ( 16 N-000032 )
+  ( 17 ? )
+  ( 18 ? )
+  ( 19 N-000028 )
+  ( 20 N-000007 )
+  ( 21 ? )
+  ( 22 ? )
+  ( 23 ? )
+  ( 24 ? )
+  ( 25 ? )
+  ( 26 ? )
+  ( 27 N-000031 )
+  ( 28 ? )
+  ( 29 GND )
+  ( 30 ? )
+ )
+ ( /529B8ED9 DIP-14__300 U3 SN74HC125
+  ( 1 GND )
+  ( 2 N-000017 )
+  ( 3 N-000003 )
+  ( 4 GND )
+  ( 5 N-000017 )
+  ( 6 N-000036 )
+  ( 7 GND )
+  ( 8 N-000002 )
+  ( 9 N-000017 )
+  ( 10 GND )
+  ( 11 N-000001 )
+  ( 12 N-000017 )
+  ( 13 GND )
+  ( 14 N-000031 )
+ )
+)
+*
+{ Allowed footprints by component:
+$component D1
+ LED-3MM
+ LED-5MM
+ LED-10MM
+ LED-0603
+ LED-0805
+ LED-1206
+ LEDV
+$endlist
+$component R1
+ R?
+ SM0603
+ SM0805
+ R?-*
+$endlist
+$endfootprintlist
+}
