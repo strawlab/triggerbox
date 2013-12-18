@@ -470,10 +470,6 @@ def main():
     argv = rospy.myargv()
     args = parser.parse_args(argv[1:])
 
-
-    argv = rospy.myargv()
-    args = parser.parse_args(argv[1:])
-
     if ((args.write_channel_name is not None) and
         (args.channel_name is not None)):
         raise RuntimeError('At most, one of --write-channel-name and '
