@@ -9,17 +9,26 @@ standoff_diam = 5.0
 standoff_offset = 5.0
 
 # Inside dimensions
-x,y,z = 150.0 + (standoff_diam+standoff_offset+1)*2, 62.0, 40
+component_height = 20
+board_standoff_height = 5
+top_margin = 10
+
+z = component_height + board_standoff_height + top_margin
+
+x,y,z = 150.0 + (standoff_diam+standoff_offset+1)*2, 62.0, z
 board_x = 140 # width of board
 print 'board_x',board_x
 hole_list = []
+
+BNC_HOLE = 13.0
+#front_y0 = 20.0
+front_y0 = z*0.5 - board_standoff_height
 
 if 1:
     # Create BNC holes in front
     hole_right_x = x*0.5
     front_x0 = 0
 
-    front_y0 = z*0.5
     for hole_x in [ hole_right_x-4.0366*INCH2MM,
                     hole_right_x-3.2378*INCH2MM,
                     hole_right_x-2.3138*INCH2MM,
@@ -30,16 +39,15 @@ if 1:
             'panel'     : 'front',
             'type'      : 'round',
             'location'  : (hole_x-front_x0,hole_y-front_y0),
-            'size'      : 11.65,
+            'size'      : BNC_HOLE,
             }
         hole_list.append(hole)
 
 if 1:
-    # Create BNC holes in back
+    # Create BNC holes in back (triggers)
     hole_right_x = x*0.5
     front_x0 = 0
 
-    front_y0 = z*0.5
     for hole_x in hole_right_x - np.array([1.2717,
                                            2.1417,
                                            3.0150,
@@ -52,7 +60,7 @@ if 1:
             'panel'     : 'back',
             'type'      : 'round',
             'location'  : (hole_x-front_x0,hole_y-front_y0),
-            'size'      : 11.65,
+            'size'      : BNC_HOLE,
             }
         hole_list.append(hole)
 
