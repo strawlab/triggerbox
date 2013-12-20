@@ -10,7 +10,7 @@ standoff_offset = 5.0
 
 # Inside dimensions
 component_height = 20
-board_standoff_height = 5
+board_standoff_height = 3
 top_margin = 10
 
 z = component_height + board_standoff_height + top_margin
@@ -77,7 +77,7 @@ if 1:
         }
     hole_list.append(hole)
 
-if 1:
+if 0:
     print '*'*80
     print 'WARNING - SHOWING PCB EDGES'
     print '*'*80
