@@ -1,6 +1,10 @@
 from py2scad import *
 import numpy as np
 
+# FIXME: In enclosure_projection_for_printing_v2.svg, I made the
+# height of the USB plug entry an additional 1 mm by extending the
+# lower edge downward. This should be fixed here in the program.
+
 # this is based on py2scad examples/basic_enclosure.py
 
 INCH2MM = 25.4
