@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+import argparse
+import time
+
+import roslib
+roslib.load_manifest('triggerbox')
+
+import rospy
+from triggerbox.triggerbox_client import TriggerboxClient
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('fps', type=float, nargs=1,
+                        help='framerate (fps)')
+
+    argv = rospy.myargv()
+    args = parser.parse_args(argv[1:])
+
+    fps = float(args.fps[0])
+
+    rospy.init_node('triggerbox_set_framerate')
+
+    tc = TriggerboxClient()
+    tc.set_frames_per_second(fps)
+
+    tries = 10
+    while not rospy.is_shutdown():
+        if (tc.expected_framerate is not None) and (abs(tc.expected_framerate-fps) < 0.01):
+            break
+        elif tries == 0:
+            break
+        else:
+            time.sleep(0.2)
+            tries -= 1
+
+    rospy.signal_shutdown('set framerate' if tries else 'unable to set framerate')
+            
+
+
+
