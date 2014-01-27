@@ -1,3 +1,4 @@
 build
 msg_gen
 src/triggerbox/msg
+*.pyc
