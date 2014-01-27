@@ -12,7 +12,7 @@ import std_msgs.msg
 
 class TriggerboxClient:
     '''a client to coordinate synchronization and time reconstruction'''
-    def __init__(self, host_node='/triggerbox' ):
+    def __init__(self, host_node='/triggerbox_host' ):
         rospy.Subscriber(
             host_node+'/time_model',
             TriggerClockModel,
