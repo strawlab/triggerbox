@@ -419,7 +419,7 @@ void setup() {
 #endif
 
     pinMode(LEDPin, OUTPUT);
-    digitalWrite(LEDPin, 0);
+    digitalWrite(LEDPin, HIGH);
 
     pinMode(TrigPin, OUTPUT);
 
@@ -518,6 +518,9 @@ void loop() {
 
             SREG = SaveSREG_; // restore interrupt flags
             send_data(version_request,'V');
+
+            digitalWrite(LEDPin, LOW);
+
         } else if (cmd=='S') {
             // synchronization
 
@@ -525,9 +528,11 @@ void loop() {
                 // stop clock, reset pulsenumber
                 TCCR1B = 0x18;
                 pulsenumber = 0;
+                digitalWrite(LEDPin, HIGH);
             } else if (value=='1') {
                 // start clock
                 TCCR1B = tccr1b_when_running;
+                digitalWrite(LEDPin, LOW);
             }
 
         } else if (cmd=='T') {
@@ -599,9 +604,12 @@ void loop() {
                 }
                 send_data_string(&out_name,'N');
             } else {
-                // turn LED on as error signal and spin forever
+                //flash LED rapidly for error
                 digitalWrite(LEDPin,HIGH);
                 while (1) {
+                    digitalWrite(LEDPin, HIGH);
+                    delay(100);
+                    digitalWrite(LEDPin, LOW);
                     delay(100);
                 }
             }
