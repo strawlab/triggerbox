@@ -56,11 +56,12 @@ class TriggerboxClient:
         return result
 
     def set_frames_per_second(self,value):
-        print 'triggerbox_client: setting FPS to',value
+        rospy.loginfo('trigger_client: setting FPS to %s' % value)
         self.expected_framerate = None # clear old value
         msg = std_msgs.msg.Float32(value)
         self.fps_pub.publish(msg)
 
     def synchronize(self, pause_duration_seconds=2 ):
+        rospy.loginfo('trigger_client: requesting synchronization')
         msg = std_msgs.msg.Float32( pause_duration_seconds )
         self.sync_pub.publish( msg )

@@ -339,6 +339,8 @@ class TriggerboxHost:
         self.outq.put( ('AOut', aout0, aout1) ) # set AOUT
 
     def set_triggerrate(self,msg):
+        rospy.loginfo('trigger_host: setting FPS to %s' % msg.data)
+
         def get_rate(rate_ideal, prescaler):
             xtal = 16e6 # 16 MHz clock
             base_clock = xtal/float(prescaler)
@@ -382,6 +384,8 @@ class TriggerboxHost:
         self.on_emit_framerate()
 
     def pause_and_reset(self,msg=None):
+        rospy.loginfo('trigger_host: requesting synchronization')
+
         orig_value = self.expected_trigger_rate
         self.expected_trigger_rate = np.nan
         self.on_emit_framerate()
