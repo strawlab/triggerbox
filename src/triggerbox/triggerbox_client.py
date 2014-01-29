@@ -27,34 +27,35 @@ class TriggerboxClient:
         self.sync_pub = rospy.Publisher( host_node+'/pause_and_reset',
                                          std_msgs.msg.Float32 )
 
-        self.gain = None
-        self.expected_framerate = None
+        self._gain = None
+        self._offset = None
+        self._expected_framerate = None
 
     def _on_expected_framerate(self,msg):
         value = msg.data
         if np.isnan(value):
-            self.expected_framerate = None
+            self._expected_framerate = None
         else:
-            self.expected_framerate = value
+            self._expected_framerate = value
 
     def _on_trigger_clock_model(self,msg):
-        self.gain = msg.gain
-        self.offset = msg.offset
+        self._gain = msg.gain
+        self._offset = msg.offset
 
     def wait_for_estimate(self):
-        while self.gain is None:
-            rospy.loginfo('waiting for triggerbox estimate')
+        while self._gain is None:
+            rospy.loginfo('triggerbox_client: waiting for clockmodel estimate')
             time.sleep(0.5)
 
     def timestamp2framestamp(self, timestamp ):
-        return (timestamp-self.offset)/self.gain
+        return (timestamp-self._offset)/self._gain
 
     def framestamp2timestamp(self, framestamp ):
-        return framestamp*self.gain + self.offset
+        return framestamp*self._gain + self._offset
 
     def get_frames_per_second(self,wait_for_valid=True):
         while True:
-            result = self.expected_framerate
+            result = self._expected_framerate
             if result is not None:
                 break
             if not wait_for_valid:
@@ -64,7 +65,7 @@ class TriggerboxClient:
 
     def set_frames_per_second(self,value):
         rospy.loginfo('trigger_client: setting FPS to %s' % value)
-        self.expected_framerate = None # clear old value
+        self._expected_framerate = None # clear old value
         msg = std_msgs.msg.Float32(value)
         self.fps_pub.publish(msg)
 
