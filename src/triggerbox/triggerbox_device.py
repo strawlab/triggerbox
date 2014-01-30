@@ -65,6 +65,7 @@ class SerialThread(threading.Thread):
         self.write_channel_name=write_channel_name
         self.channel_name=channel_name
         self._name_check_done = False
+        self._log = logging.getLogger("root.serial")
 
     def _set_ICR1_AND_PRESCALER( self, new_value ):
         icr1, prescaler = new_value
@@ -163,7 +164,7 @@ class SerialThread(threading.Thread):
         self._vquery_time = time_func()
         self._version_check_done = True
 
-        logging.info('connected to triggerbox firmware version %d' % value )
+        self._log.info('connected to triggerbox firmware version %d' % value )
 
         # version check is OK. write channel name if desired.
         if self.write_channel_name is not None:
@@ -175,10 +176,10 @@ class SerialThread(threading.Thread):
         if self._name_check_started is None:
             self.ser.write( 'N?' )
             self._name_check_started = time_func()
-            logging.info('querying channel name')
+            self._log.info('querying channel name')
 
     def _handle_name(self,actual_name):
-        logging.info('connected to trigger channel %r' % actual_name )
+        self._log.info('connected to trigger channel %r' % actual_name )
         self._name_check_done = True
         if self.channel_name is not None:
             assert self.channel_name==actual_name, 'expected: %r' % self.channel_name
@@ -189,17 +190,17 @@ class SerialThread(threading.Thread):
 
         while len(self._queries) > 50:
             old_qi = self._queries.popitem(last=False)
-            logging.warn('never got return for query %d'%old_qi)
+            self._log.warn('never got return for query %d'%old_qi)
 
         try:
             send_timestamp = self._queries.pop( qi )
         except KeyError:
-            logging.warn('could not find original data for query %d'%qi)
+            self._log.warn('could not find original data for query %d'%qi)
             return
 
         max_error = now-send_timestamp
         if max_error > 0.015: # 15 msec cutoff
-            logging.warn(
+            self._log.warn(
                 'clock sample took %.1f msec. Ignoring value.'%( max_error*1e3))
             return
 
@@ -282,6 +283,8 @@ class TriggerboxDevice(threading.Thread):
         super(TriggerboxDevice,self).__init__(name="triggerbox device")
         self.daemon = True
 
+        self._log = logging.getLogger("trigger.device")
+
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
 
@@ -301,14 +304,14 @@ class TriggerboxDevice(threading.Thread):
         self.ser_thread.daemon = True
         self.ser_thread.start()
 
-        logging.info('Waiting until serial device confirmed...')
+        self._log.info('Waiting until serial device confirmed...')
         while True:
             if not self.ser_thread.is_alive():
                 raise RuntimeError('serial thread died')
             if self.ser_thread._name_check_done:
                 break
             time.sleep(0.1)
-        logging.info('Serial device is now confirmed.')
+        self._log.info('Serial device is now confirmed.')
 
         #we need to talk to the serial device reguarly, so we implement
         #our own scheduler here
@@ -347,11 +350,11 @@ class TriggerboxDevice(threading.Thread):
             try:
                 self.time_model = get_time_model(tdata[:,1], tdata[:,0], max_residual=0.1)
             except TimeFitError, err:
-                logging.warn('error fitting time_model: %s'%err)
+                self._log.warn('error fitting time_model: %s'%err)
             else:
                 self.notify_clockmodel(self.time_model.gain, self.time_model.offset)
                 approx_freq = 1.0/self.time_model.gain
-                logging.debug('approximate timer frequency: %s'%(approx_freq,))
+                self._log.debug('approximate timer frequency: %s'%(approx_freq,))
 
     def run(self):
         i = 0
@@ -374,7 +377,7 @@ class TriggerboxDevice(threading.Thread):
             rate_actual = base_clock/new_icr1
             return new_icr1, rate_actual
 
-        logging.info('received set_triggerrate command with target of %s'%rate_ideal)
+        self._log.info('received set_triggerrate command with target of %s'%rate_ideal)
         self._clear_data()
 
         icr1_8, rate_actual_8 = get_rate( rate_ideal, 8)
@@ -392,7 +395,7 @@ class TriggerboxDevice(threading.Thread):
             rate_actual = rate_actual_64
             prescaler = 64
 
-        logging.info( 'desired rate %s (actual rate %s) using ICR1_AND_PRESCALER %x %d' % (rate_ideal,
+        self._log.info( 'desired rate %s (actual rate %s) using ICR1_AND_PRESCALER %x %d' % (rate_ideal,
                                                                                             rate_actual,
                                                                                             new_icr1,
                                                                                             prescaler) )
@@ -422,13 +425,13 @@ class TriggerboxDevice(threading.Thread):
         self.notify_framerate(self.expected_trigger_rate)
 
     def notify_framerate(self, expected_trigger_rate):
-        logging.info('framerate: %f' % expected_trigger_rate)
+        self._log.info('framerate: %f' % expected_trigger_rate)
 
     def notify_clockmodel(self, gain, offset):
-        logging.info('gain: %s offset: %s' % (gain, offset))
+        self._log.info('gain: %s offset: %s' % (gain, offset))
 
     def notify_fatal_error(self, msg):
-        logging.critical(msg)
+        self._log.critical(msg)
 
     def set_aout_ab_volts(self, aout0_v, aout1_v):
         aout0 = volts_to_dac(aout0_v)
