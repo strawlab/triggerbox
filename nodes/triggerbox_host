@@ -7,6 +7,14 @@ import argparse
 
 import roslib; roslib.load_manifest('triggerbox')
 
+##### HACK HACK
+##### ADD SetFrameRate service to triggerbox that spins
+##### on expected framerate
+roslib.load_manifest('camera_trigger')
+roslib.load_manifest('std_srvs')
+import camera_trigger.srv
+import std_srvs.srv
+
 import rospy
 from triggerbox.time_model import get_time_model, TimeFitError
 from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw
@@ -326,6 +334,16 @@ class TriggerboxHost:
         rospy.Subscriber('~pause_and_reset', std_msgs.msg.Float32, self.pause_and_reset)
         rospy.Subscriber('~aout_volts', AOutVolts, self.set_aout_ab_volts)
         rospy.Subscriber('~aout_raw', AOutRaw, self.set_aout_ab_raw)
+
+        ### HACK
+        self.lock = threading.Lock()
+        rospy.Service('/camera_trigger/set_framerate', camera_trigger.srv.SetFramerate, self.handle_set_framerate)
+
+    ### HACK
+    def handle_set_framerate(self, req):
+        msg = std_msgs.msg.Float32(req.fps)
+        self.set_triggerrate(msg)
+        return camera_trigger.srv.SetFramerateResponse()
 
     def set_aout_ab_volts(self,msg):
         aout0_v = msg.aout0
