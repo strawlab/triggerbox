@@ -533,6 +533,10 @@ void loop() {
                 // start clock
                 TCCR1B = tccr1b_when_running;
                 digitalWrite(LEDPin, LOW);
+            } else if (value=='2') {
+                // stop clock
+                TCCR1B = 0x18;
+                digitalWrite(LEDPin, HIGH);
             }
 
         } else if (cmd=='T') {

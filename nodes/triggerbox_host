@@ -124,6 +124,8 @@ class SerialThread(threading.Thread):
                         self._set_ICR1_AND_PRESCALER( new_value )
                     elif cmd=='stop_pulses_and_reset':
                         self.ser.write('S0')
+                    elif cmd=='stop_pulses':
+                        self.ser.write('S2')
                     elif cmd=='start_pulses':
                         self.ser.write('S1')
                     elif cmd=='AOut':
@@ -340,6 +342,14 @@ class TriggerboxHost:
 
     def set_triggerrate(self,msg):
         rospy.loginfo('trigger_host: setting FPS to %s' % msg.data)
+
+        if msg.data == 0:
+            rospy.loginfo('trigger_host: setting FPS to ZERO')
+            self.outq.put( ('stop_pulses',) )
+            self.on_clear_data()
+            self.expected_trigger_rate = 0
+            self.on_emit_framerate()
+            return
 
         def get_rate(rate_ideal, prescaler):
             xtal = 16e6 # 16 MHz clock
