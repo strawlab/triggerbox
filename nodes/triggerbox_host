@@ -71,7 +71,8 @@ def _setup_serial(device=None):
     return ser
 
 class SerialThread(threading.Thread):
-    def __init__(self,name,args,device,write_channel_name,channel_name):
+    def __init__(self,name,args,device,write_channel_name,channel_name,
+                 measurement_pub):
         super(SerialThread,self).__init__(name=name)
         self.__args=args
         self.ICR1_AND_PRESCALER = None
@@ -79,6 +80,7 @@ class SerialThread(threading.Thread):
         self.write_channel_name=write_channel_name
         self.channel_name=channel_name
         self._name_check_done = False
+        self.measurement_pub = measurement_pub
 
     def _set_ICR1_AND_PRESCALER( self, new_value ):
         icr1, prescaler = new_value
@@ -230,9 +232,14 @@ class SerialThread(threading.Thread):
 
         self.time_q.put( (ino_time_estimate, ino_stamp) )
 
+        if frac > 1.0:
+            # FIXME: this happens once at startup.
+            rospy.logwarn('invalid frac %s'%frac)
+            return
+
         msg = TriggerClockMeasurement()
         msg.start_timestamp = send_timestamp
-        msg.framecount = pulsenumber
+        msg.pulsenumber = pulsenumber
         msg.fraction_n_of_255 = int(np.round(frac * 255.0))
         msg.stop_timestamp = now
         self.measurement_pub.publish(msg)
@@ -298,7 +305,7 @@ class TriggerboxHost:
         rospy.init_node('triggerbox_host')
         self.pub = rospy.Publisher('~time_model', TriggerClockModel)
         self.rate_pub = rospy.Publisher('~expected_framerate', std_msgs.msg.Float32)
-        self.measurement_pub = rospy.Publisher('~raw_measurements', TriggerClockMeasurement)
+        measurement_pub = rospy.Publisher('~raw_measurements', TriggerClockMeasurement)
 
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
@@ -317,6 +324,7 @@ class TriggerboxHost:
                                        device=device,
                                        write_channel_name=write_channel_name,
                                        channel_name=channel_name,
+                                       measurement_pub=measurement_pub,
                                        )
         self.ser_thread.daemon = True
         self.ser_thread.start()
