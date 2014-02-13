@@ -17,7 +17,8 @@ import std_srvs.srv
 
 import rospy
 from triggerbox.time_model import get_time_model, TimeFitError
-from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw
+from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw, \
+     TriggerClockMeasurement
 
 import std_msgs
 
@@ -229,6 +230,13 @@ class SerialThread(threading.Thread):
 
         self.time_q.put( (ino_time_estimate, ino_stamp) )
 
+        msg = TriggerClockMeasurement()
+        msg.start_timestamp = send_timestamp
+        msg.framecount = pulsenumber
+        msg.fraction_n_of_255 = int(np.round(frac * 255.0))
+        msg.stop_timestamp = now
+        self.measurement_pub.publish(msg)
+
     def _h(self,buf):
         result = buf
         if len(buf) >= 3: # header, length, checksum is minimum
@@ -290,6 +298,7 @@ class TriggerboxHost:
         rospy.init_node('triggerbox_host')
         self.pub = rospy.Publisher('~time_model', TriggerClockModel)
         self.rate_pub = rospy.Publisher('~expected_framerate', std_msgs.msg.Float32)
+        self.measurement_pub = rospy.Publisher('~raw_measurements', TriggerClockMeasurement)
 
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
