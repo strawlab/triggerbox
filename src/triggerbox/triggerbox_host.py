@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import numpy as np
 
 import roslib; roslib.load_manifest('triggerbox')
 
@@ -13,8 +14,8 @@ class TriggerboxHost(TriggerboxDevice):
     '''an in-process version of the triggerbox client with identical API'''
     def __init__(self, device, write_channel_name, channel_name):
 
-        self._gain = None
-        self._offset = None
+        self._gain = np.nan
+        self._offset = np.nan
         self._expected_framerate = None
 
         self.pub_time = rospy.Publisher('~time_model', TriggerClockModel)
@@ -52,8 +53,11 @@ class TriggerboxHost(TriggerboxDevice):
         rospy.signal_shutdown(msg)
 
     #ClientAPI
+    def have_estimate(self):
+        return (not np.isnan(self._gain)) and (not np.isnan(self._offset))
+
     def wait_for_estimate(self):
-        while self._gain is None:
+        while not self.have_estimate():
             rospy.loginfo('triggerbox_host: waiting for clockmodel estimate')
             time.sleep(0.5)
 

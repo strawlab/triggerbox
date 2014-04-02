@@ -27,8 +27,8 @@ class TriggerboxClient:
         self.sync_pub = rospy.Publisher( host_node+'/pause_and_reset',
                                          std_msgs.msg.Float32 )
 
-        self._gain = None
-        self._offset = None
+        self._gain = np.nan
+        self._offset = np.nan
         self._expected_framerate = None
 
     def _on_expected_framerate(self,msg):
@@ -42,8 +42,11 @@ class TriggerboxClient:
         self._gain = msg.gain
         self._offset = msg.offset
 
+    def have_estimate(self):
+        return (not np.isnan(self._gain)) and (not np.isnan(self._offset))
+
     def wait_for_estimate(self):
-        while self._gain is None:
+        while not self.have_estimate():
             rospy.loginfo('triggerbox_client: waiting for clockmodel estimate')
             time.sleep(0.5)
 
