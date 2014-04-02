@@ -122,6 +122,8 @@ class SerialThread(threading.Thread):
                         self.ser.write('S0')
                     elif cmd=='start_pulses':
                         self.ser.write('S1')
+                    elif cmd=='stop_pulses':
+                        self.ser.write('S2')
                     elif cmd=='AOut':
                         aout0, aout1 = cmd_tup[1:3]
                         self._set_AOUT( aout0, aout1 )
@@ -369,6 +371,15 @@ class TriggerboxDevice(threading.Thread):
             time.sleep(0.01)
 
     def set_triggerrate(self, rate_ideal):
+
+        if rate_ideal == 0:
+            self._log.info('trigger_host: setting FPS to ZERO')
+            self.outq.put( ('stop_pulses',) )
+            self._clear_data()
+            self.expected_trigger_rate = rate_ideal
+            self.notify_framerate(self.expected_trigger_rate)
+            return
+
         def get_rate(rate_ideal, prescaler):
             xtal = 16e6 # 16 MHz clock
             base_clock = xtal/float(prescaler)
