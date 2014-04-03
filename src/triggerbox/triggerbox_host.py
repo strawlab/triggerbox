@@ -46,6 +46,7 @@ class TriggerboxHost(TriggerboxDevice):
         if self._expected_framerate is not None:
             self.pub_rate.publish(self._expected_framerate)
 
+    #Callbacks from the underlying hardware
     def notify_framerate(self, expected_trigger_rate):
         self._expected_framerate = expected_trigger_rate
         self.pub_rate.publish(self._expected_framerate)
