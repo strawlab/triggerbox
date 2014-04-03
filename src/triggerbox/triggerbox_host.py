@@ -6,6 +6,7 @@ import roslib; roslib.load_manifest('triggerbox')
 
 import rospy
 from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw
+from triggerbox.srv import SetFramerate, SetFramerateResponse
 from triggerbox.triggerbox_device import TriggerboxDevice
 
 import std_msgs
@@ -32,8 +33,14 @@ class TriggerboxHost(TriggerboxDevice):
         rospy.Subscriber('~aout_raw', AOutRaw,
                 lambda _msg: self.set_aout_ab_raw(self,_msg.aout0,_msg.aout1))
 
+        rospy.Service('~set_framerate', SetFramerate, self._on_set_framerate_service)
+
         # emit expected frame rate every 5 seconds
         rospy.Timer(rospy.Duration(5.0), self._on_emit_framerate)
+
+    def _on_set_framerate_service(self, req):
+        self.set_frames_per_second(req.data)
+        return SetFramerateResponse()
 
     def _on_emit_framerate(self, _=None):
         if self._expected_framerate is not None:
@@ -80,6 +87,9 @@ class TriggerboxHost(TriggerboxDevice):
     def set_frames_per_second(self,value):
         rospy.loginfo('triggerbox_host: setting FPS to %s' % value)
         self.set_triggerrate(value)
+
+    def set_frames_per_second_blocking(self, *args, **kwargs):
+        self.set_frames_per_second(*args, **kwargs)
 
     def synchronize(self, pause_duration_seconds=2 ):
         rospy.loginfo('triggerbox_host: synchronizing')
