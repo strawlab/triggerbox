@@ -8,7 +8,7 @@ import roslib; roslib.load_manifest('triggerbox')
 import rospy
 
 from triggerbox.api import TriggerboxAPI
-from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw
+from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw, TriggerClockMeasurement
 from triggerbox.srv import SetFramerate, SetFramerateResponse
 from triggerbox.triggerbox_device import TriggerboxDevice
 
@@ -24,6 +24,7 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
 
         self.pub_time = rospy.Publisher('~time_model', TriggerClockModel)
         self.pub_rate = rospy.Publisher('~expected_framerate', std_msgs.msg.Float32)
+        self.pub_raw = rospy.Publisher('~raw_measurements', TriggerClockMeasurement)
 
         super(TriggerboxHost,self).__init__(device, write_channel_name, channel_name)
 
@@ -60,6 +61,10 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         self._offset = offset
         self.pub_time.publish(self._gain, self._offset)
         self._api_callback(self.clockmodel_callback, gain, offset)
+
+    def _notify_clock_measurement(self, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp):
+        self.pub_raw.publish(start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
+        self._api_callback(self.clock_measurement_callback, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
 
     def _notify_fatal_error(self, msg):
         rospy.logfatal(msg)

@@ -1,10 +1,11 @@
 class TriggerboxAPI:
 
     #Callbacks from the underlying hardware
-    framerate_callback = None   #func(expected_trigger_rate)
-    clockmodel_callback = None  #func(gain, offset)
-    fatal_error_callback = None #func(msg)
-    connected_callback = None   #func(name, device)
+    framerate_callback          = None  #func(expected_trigger_rate)
+    clockmodel_callback         = None  #func(gain, offset)
+    clock_measurement_callback  = None  #func(start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
+    fatal_error_callback        = None  #func(msg)
+    connected_callback          = None  #func(name, device)
 
     def _api_callback(self, cb_obj, *args):
         if cb_obj is not None:

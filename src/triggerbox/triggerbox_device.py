@@ -105,7 +105,7 @@ class SerialThread(threading.Thread):
 
         self._name_check_started = None
 
-        self.time_q, self.outq = self.__args
+        self.raw_q, self.time_q, self.outq = self.__args
 
         self.ser = _setup_serial(device=self.device)
         self.ser.open()
@@ -221,6 +221,9 @@ class SerialThread(threading.Thread):
 
         self.time_q.put( (ino_time_estimate, ino_stamp) )
 
+        self.raw_q.put( (send_timestamp, pulsenumber,
+                         int(np.round(frac * 255.0)), now) )
+
     def _h(self,buf):
         result = buf
         if len(buf) >= 3: # header, length, checksum is minimum
@@ -294,6 +297,7 @@ class TriggerboxDevice(threading.Thread):
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
 
+        self.raw_q = Queue.Queue()
         self.time_q = Queue.Queue()
         self.outq = Queue.Queue()
 
@@ -301,7 +305,7 @@ class TriggerboxDevice(threading.Thread):
 
         self.times = []
 
-        self.ser_thread = SerialThread(args=(self.time_q,self.outq),
+        self.ser_thread = SerialThread(args=(self.raw_q,self.time_q,self.outq),
                                        device=device,
                                        write_channel_name=write_channel_name,
                                        channel_name=channel_name)
@@ -343,6 +347,12 @@ class TriggerboxDevice(threading.Thread):
             return
 
         # get all pending data
+        while 1:
+            try:
+                raw = self.raw_q.get_nowait()
+                self._notify_clock_measurement(*raw)
+            except Queue.Empty:
+                break
 
         new_time = False
         while 1:
@@ -370,6 +380,9 @@ class TriggerboxDevice(threading.Thread):
     def _notify_clockmodel(self, gain, offset):
         self._log.info('gain: %s offset: %s' % (gain, offset))
 
+    def _notify_clock_measurement(self, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp):
+        pass
+
     def _notify_fatal_error(self, msg):
         self._log.critical(msg)
 
@@ -379,7 +392,6 @@ class TriggerboxDevice(threading.Thread):
     def run(self):
         i = 0
         while True:
-            #check the serial thread every 100ms
             if (i % 100) == 0:
                 self._get_new_data()
             if i == 2000:
@@ -462,9 +474,10 @@ class TriggerboxDevice(threading.Thread):
         self.outq.put( ('AOut', aout0, aout1) ) # set AOUT
 
 if __name__=='__main__':
+    import itertools
     logging.basicConfig(level=logging.DEBUG)
     td = TriggerboxDevice('/dev/ttyUSB0', None, None)
-    while True:
-        time.sleep(0.2)
-
+    for i in itertools.cycle(range(5,200,10)):
+        td.set_triggerrate(i)
+        time.sleep(10)
 

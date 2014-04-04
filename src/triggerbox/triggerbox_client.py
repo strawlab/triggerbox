@@ -7,7 +7,7 @@ import rospy
 
 from triggerbox.api import TriggerboxAPI
 from triggerbox.time_model import get_time_model, TimeFitError
-from triggerbox.msg import TriggerClockModel
+from triggerbox.msg import TriggerClockModel, TriggerClockMeasurement
 from triggerbox.srv import SetFramerate
 
 import std_msgs.msg
@@ -18,6 +18,9 @@ class TriggerboxClient(TriggerboxAPI):
         rospy.Subscriber(host_node+'/time_model',
                          TriggerClockModel,
                          self._on_trigger_clock_model)
+        rospy.Subscriber(host_node+'/raw_measurements',
+                         TriggerClockMeasurement,
+                         self._on_trigger_clock_measurement)
         rospy.Subscriber(host_node+'/expected_framerate',
                          std_msgs.msg.Float32,
                          self._on_expected_framerate)
@@ -57,6 +60,10 @@ class TriggerboxClient(TriggerboxAPI):
             if have_estimate:
                 self._api_callback(self.connected_callback, self._host_node, "ROS")
                 self._got_estimate = True
+
+    def _on_trigger_clock_measurement(self,msg):
+        self._api_callback(self.clock_measurement_callback,
+                msg.start_timestamp, msg.pulsenumber, msg.fraction_n_of_255, msg.stop_timestamp)
 
     def have_estimate(self):
         return (not np.isnan(self._gain)) and (not np.isnan(self._offset))
@@ -101,7 +108,8 @@ class TriggerboxClient(TriggerboxAPI):
 if __name__=='__main__':
     rospy.init_node('triggerbox_client')
     tb = TriggerboxClient()
-    tb.connected_callback = lambda _n, _d: rospy.loginfo("connected %s %s" % (_n, _d))
+    tb.connected_callback = lambda _n, _d: rospy.loginfo("connected to '%s' via %s" % (_n, _d))
+    #tb.clock_measurement_callback = lambda *args: rospy.loginfo("raw clock measurement: %r" % (args,))
     tb.wait_for_estimate()
     rospy.spin()
 
