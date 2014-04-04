@@ -63,6 +63,15 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         self._api_callback(self.clockmodel_callback, gain, offset)
 
     def _notify_clock_measurement(self, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp):
+        if fraction_n_of_255 > 255:
+            #occasionally, when changing framerates, and due to the async
+            #and out-of-order nature of comms with the hardware, we gen a
+            #fraction value that exceeds 255 here. Ignore it.
+            #If a similar bogus value made it into the model, it will
+            #eventually be filtered out anyway
+            rospy.logerr("triggerbox_host: invalid raw clock measurment. fraction %s exceeds 255" % fraction_n_of_255)
+            return
+
         self.pub_raw.publish(start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
         self._api_callback(self.clock_measurement_callback, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
 
