@@ -15,6 +15,10 @@ class TriggerboxAPI:
     def expected_framerate(self):
         return self._expected_framerate
 
+    @property
+    def connected(self):
+        return self._connected
+
     #ClientAPI
     def have_estimate(self):
         raise NotImplementedError

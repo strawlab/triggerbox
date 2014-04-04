@@ -43,7 +43,7 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         rospy.Timer(rospy.Duration(5.0), self._on_emit_framerate)
 
     def _on_set_framerate_service(self, req):
-        self.set_frames_per_second(req.data)
+        self.set_frames_per_second_blocking(req.data)
         return SetFramerateResponse()
 
     def _on_emit_framerate(self, _=None):
@@ -105,6 +105,9 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         self.set_triggerrate(value)
 
     def set_frames_per_second_blocking(self, *args, **kwargs):
+        while not self.connected:
+            rospy.loginfo('triggerbox_host: waiting for connection')
+            time.sleep(0.5)
         self.set_frames_per_second(*args, **kwargs)
 
     def synchronize(self, pause_duration_seconds=2 ):
@@ -117,6 +120,7 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
 if __name__=='__main__':
     rospy.init_node('triggerbox_host')
     tb = TriggerboxHost('/dev/ttyUSB0', None, None)
+    tb.set_frames_per_second_blocking(25.0)
     tb.wait_for_estimate()
     rospy.spin()
 

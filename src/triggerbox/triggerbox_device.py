@@ -288,10 +288,12 @@ def ensure_valid_name(channel_name):
     assert channel_name.find(chr(0)) == -1
 
 class TriggerboxDevice(threading.Thread):
+
     def __init__(self, device, write_channel_name, channel_name):
         super(TriggerboxDevice,self).__init__(name="triggerbox device")
         self.daemon = True
 
+        self._connected = False
         self._log = logging.getLogger("trigger.device")
 
         ensure_valid_name(write_channel_name)
@@ -320,10 +322,8 @@ class TriggerboxDevice(threading.Thread):
                 break
             time.sleep(0.1)
 
+        self._connected = True
         self._notify_connected(self.ser_thread.channel_name, device)
-
-        #calls self._notify_framerate()
-        self.set_triggerrate(25)
 
         #we need to talk to the serial device reguarly, so we implement
         #our own scheduler here

@@ -31,8 +31,10 @@ class TriggerboxClient(TriggerboxAPI):
         self.sync_pub = rospy.Publisher(
                          host_node+'/pause_and_reset',
                          std_msgs.msg.Float32)
+
+        self._fps_srv_url = host_node+'/set_framerate'
         self.fps_srv = rospy.ServiceProxy(
-                         host_node+'/set_framerate',
+                         self._fps_srv_url,
                          SetFramerate)
 
         self._host_node = host_node
@@ -40,7 +42,8 @@ class TriggerboxClient(TriggerboxAPI):
         self._gain = np.nan
         self._offset = np.nan
         self._expected_framerate = None
-        self._got_estimate = False
+
+        self._connected = False
 
     def _on_expected_framerate(self,msg):
         value = msg.data
@@ -55,11 +58,11 @@ class TriggerboxClient(TriggerboxAPI):
         self._offset = msg.offset
         self._api_callback(self.clockmodel_callback, self._gain, self._offset)
 
-        if not self._got_estimate:
+        if not self._connected:
             have_estimate = self.have_estimate()
             if have_estimate:
                 self._api_callback(self.connected_callback, self._host_node, "ROS")
-                self._got_estimate = True
+                self._connected = True
 
     def _on_trigger_clock_measurement(self,msg):
         self._api_callback(self.clock_measurement_callback,
@@ -96,6 +99,7 @@ class TriggerboxClient(TriggerboxAPI):
         self.fps_pub.publish(msg)
 
     def set_frames_per_second_blocking(self,value):
+        rospy.wait_for_service(self._fps_srv_url)
         rospy.loginfo('trigger_client: setting FPS to %s' % value)
         self._expected_framerate = None # clear old value
         self.fps_srv(value)
@@ -110,6 +114,7 @@ if __name__=='__main__':
     tb = TriggerboxClient()
     tb.connected_callback = lambda _n, _d: rospy.loginfo("connected to '%s' via %s" % (_n, _d))
     #tb.clock_measurement_callback = lambda *args: rospy.loginfo("raw clock measurement: %r" % (args,))
+    tb.set_frames_per_second_blocking(25.0)
     tb.wait_for_estimate()
     rospy.spin()
 
