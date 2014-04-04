@@ -298,7 +298,6 @@ class TriggerboxDevice(threading.Thread):
         self.outq = Queue.Queue()
 
         self.expected_trigger_rate = np.nan
-        self.set_triggerrate(200.0) # calls self._notify_framerate()
 
         self.times = []
 
@@ -318,6 +317,9 @@ class TriggerboxDevice(threading.Thread):
             time.sleep(0.1)
 
         self._notify_connected(self.ser_thread.channel_name, device)
+
+        #calls self._notify_framerate()
+        self.set_triggerrate(25)
 
         #we need to talk to the serial device reguarly, so we implement
         #our own scheduler here
