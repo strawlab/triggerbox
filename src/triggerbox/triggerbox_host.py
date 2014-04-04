@@ -28,9 +28,9 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         super(TriggerboxHost,self).__init__(device, write_channel_name, channel_name)
 
         rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32,
-                lambda _msg: self.set_triggerrate(msg.data))
+                lambda _msg: self.set_triggerrate(_msg.data))
         rospy.Subscriber('~pause_and_reset', std_msgs.msg.Float32,
-                lambda _msg: self.pause_and_reset(msg.data))
+                lambda _msg: self.pause_and_reset(_msg.data))
         rospy.Subscriber('~aout_volts', AOutVolts,
                 lambda _msg: self.set_aout_ab_volts(self,_msg.aout0,_msg.aout1))
         rospy.Subscriber('~aout_raw', AOutRaw,
