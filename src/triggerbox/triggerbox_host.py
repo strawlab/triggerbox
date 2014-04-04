@@ -14,30 +14,59 @@ from triggerbox.triggerbox_device import TriggerboxDevice
 
 import std_msgs
 
+def _make_ros_topic(base, other):
+    if base == '~':
+        return base+other
+
+    #ensure no start slash and one trailing slash
+    if base[0] == '/':
+        base = base[1:]
+    if base[-1] == '/':
+        base = base[:-1]
+
+    return base + '/' + other
+
 class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
     '''an in-process version of the triggerbox client with identical API'''
-    def __init__(self, device, write_channel_name, channel_name):
+    def __init__(self, device, write_channel_name, channel_name, ros_topic_base='~'):
 
         self._gain = np.nan
         self._offset = np.nan
         self._expected_framerate = None
 
-        self.pub_time = rospy.Publisher('~time_model', TriggerClockModel)
-        self.pub_rate = rospy.Publisher('~expected_framerate', std_msgs.msg.Float32)
-        self.pub_raw = rospy.Publisher('~raw_measurements', TriggerClockMeasurement)
+        self.pub_time = rospy.Publisher(
+                                _make_ros_topic(ros_topic_base,'time_model'),
+                                TriggerClockModel)
+        self.pub_rate = rospy.Publisher(
+                                _make_ros_topic(ros_topic_base,'expected_framerate'),
+                                std_msgs.msg.Float32)
+        self.pub_raw = rospy.Publisher(
+                                _make_ros_topic(ros_topic_base,'raw_measurements'),
+                                TriggerClockMeasurement)
 
         super(TriggerboxHost,self).__init__(device, write_channel_name, channel_name)
 
-        rospy.Subscriber('~set_triggerrate', std_msgs.msg.Float32,
+        rospy.Subscriber(
+                _make_ros_topic(ros_topic_base,'set_triggerrate'),
+                std_msgs.msg.Float32,
                 lambda _msg: self.set_triggerrate(_msg.data))
-        rospy.Subscriber('~pause_and_reset', std_msgs.msg.Float32,
+        rospy.Subscriber(
+                _make_ros_topic(ros_topic_base,'pause_and_reset'),
+                std_msgs.msg.Float32,
                 lambda _msg: self.pause_and_reset(_msg.data))
-        rospy.Subscriber('~aout_volts', AOutVolts,
+        rospy.Subscriber(
+                _make_ros_topic(ros_topic_base,'aout_volts'),
+                AOutVolts,
                 lambda _msg: self.set_aout_ab_volts(self,_msg.aout0,_msg.aout1))
-        rospy.Subscriber('~aout_raw', AOutRaw,
+        rospy.Subscriber(
+                _make_ros_topic(ros_topic_base,'aout_raw'),
+                AOutRaw,
                 lambda _msg: self.set_aout_ab_raw(self,_msg.aout0,_msg.aout1))
 
-        rospy.Service('~set_framerate', SetFramerate, self._on_set_framerate_service)
+        rospy.Service(
+                _make_ros_topic(ros_topic_base,'set_framerate'),
+                SetFramerate,
+                self._on_set_framerate_service)
 
         # emit expected frame rate every 5 seconds
         rospy.Timer(rospy.Duration(5.0), self._on_emit_framerate)
