@@ -57,14 +57,17 @@ def _setup_serial(device=None):
     return ser
 
 class SerialThread(threading.Thread):
-    def __init__(self,args,device,write_channel_name,channel_name):
+    def __init__(self,args,device, write_channel_name, channel_name):
         super(SerialThread,self).__init__(name="triggerbox serial thread",)
         self.__args=args
         self.ICR1_AND_PRESCALER = None
-        self.device=device
-        self.write_channel_name=write_channel_name
-        self.channel_name=channel_name
-        self._name_check_done = False
+
+        self.device = device
+        self.channel_name = ''
+        self.name_check_done = False
+
+        self._write_channel_name = write_channel_name
+        self._channel_name = channel_name
         self._log = logging.getLogger("root.serial")
 
     def _set_ICR1_AND_PRESCALER( self, new_value ):
@@ -157,7 +160,7 @@ class SerialThread(threading.Thread):
                 if (now - self._vquery_time) > 5.0:
                     raise RuntimeError('no version response')
 
-            if not self._name_check_done:
+            if not self.name_check_done:
                 if self._name_check_started is not None and (now - self._name_check_started) > 5.0:
                     raise RuntimeError('no channel name check response')
 
@@ -169,10 +172,10 @@ class SerialThread(threading.Thread):
         self._log.info('connected to triggerbox firmware version %d' % value )
 
         # version check is OK. write channel name if desired.
-        if self.write_channel_name is not None:
-            payload = 'N='+self.write_channel_name+'\0'
+        if self._write_channel_name is not None:
+            payload = 'N='+self._write_channel_name+'\0'
             self.ser.write( payload )
-            self.write_channel_name = None # don't send again
+            self._write_channel_name = None # don't send again
 
         # channel name check
         if self._name_check_started is None:
@@ -181,11 +184,12 @@ class SerialThread(threading.Thread):
             self._log.info('querying channel name')
 
     def _handle_name(self,actual_name):
-        self._log.info('connected to trigger channel %r' % actual_name )
-        self._name_check_done = True
-        if self.channel_name is not None:
-            assert self.channel_name==actual_name, 'expected: %r' % self.channel_name
-            self.channel_name=None
+        #save the true name
+        self.channel_name = actual_name
+        self.name_check_done = True
+        if self._channel_name is not None:
+            assert self.channel_name==actual_name, 'expected: %r' % self._channel_name
+            self._channel_name = None
 
     def _handle_returned_timestamp(self, qi, pulsenumber, count):
         now = time_func()
@@ -290,12 +294,11 @@ class TriggerboxDevice(threading.Thread):
         ensure_valid_name(write_channel_name)
         ensure_valid_name(channel_name)
 
-        self.channel_name=channel_name
         self.time_q = Queue.Queue()
         self.outq = Queue.Queue()
 
         self.expected_trigger_rate = np.nan
-        self.set_triggerrate(200.0) # calls self.notify_framerate()
+        self.set_triggerrate(200.0) # calls self._notify_framerate()
 
         self.times = []
 
@@ -310,10 +313,11 @@ class TriggerboxDevice(threading.Thread):
         while True:
             if not self.ser_thread.is_alive():
                 raise RuntimeError('serial thread died')
-            if self.ser_thread._name_check_done:
+            if self.ser_thread.name_check_done:
                 break
             time.sleep(0.1)
-        self._log.info('Serial device is now confirmed.')
+
+        self._notify_connected(self.ser_thread.channel_name, device)
 
         #we need to talk to the serial device reguarly, so we implement
         #our own scheduler here
@@ -322,7 +326,7 @@ class TriggerboxDevice(threading.Thread):
     def _clear_data(self):
         self.times = []
         self.time_model = None
-        self.notify_clockmodel(np.nan, np.nan)
+        self._notify_clockmodel(np.nan, np.nan)
 
     def _trim_data(self,_=None):
         keep_n_times = 500
@@ -333,7 +337,7 @@ class TriggerboxDevice(threading.Thread):
 
     def _get_new_data(self, _=None):
         if not self.ser_thread.is_alive():
-            self.notify_fatal_error('serial port thread is not alive')
+            self._notify_fatal_error('serial port thread is not alive')
             return
 
         # get all pending data
@@ -354,9 +358,21 @@ class TriggerboxDevice(threading.Thread):
             except TimeFitError, err:
                 self._log.warn('error fitting time_model: %s'%err)
             else:
-                self.notify_clockmodel(self.time_model.gain, self.time_model.offset)
+                self._notify_clockmodel(self.time_model.gain, self.time_model.offset)
                 approx_freq = 1.0/self.time_model.gain
                 self._log.debug('approximate timer frequency: %s'%(approx_freq,))
+
+    def _notify_framerate(self, expected_trigger_rate):
+        self._log.info('framerate: %f' % expected_trigger_rate)
+
+    def _notify_clockmodel(self, gain, offset):
+        self._log.info('gain: %s offset: %s' % (gain, offset))
+
+    def _notify_fatal_error(self, msg):
+        self._log.critical(msg)
+
+    def _notify_connected(self, name, device):
+        self._log.info("connected to '%s' via %s" % (name, device))
 
     def run(self):
         i = 0
@@ -377,7 +393,7 @@ class TriggerboxDevice(threading.Thread):
             self.outq.put( ('stop_pulses',) )
             self._clear_data()
             self.expected_trigger_rate = rate_ideal
-            self.notify_framerate(self.expected_trigger_rate)
+            self._notify_framerate(self.expected_trigger_rate)
             return
 
         def get_rate(rate_ideal, prescaler):
@@ -411,7 +427,7 @@ class TriggerboxDevice(threading.Thread):
                                                                                             new_icr1,
                                                                                             prescaler) )
         self.expected_trigger_rate = np.nan
-        self.notify_framerate(self.expected_trigger_rate)
+        self._notify_framerate(self.expected_trigger_rate)
 
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
         self.outq.put( ('icr1_and_prescaler', (new_icr1,prescaler)) ) # set triggerrate
@@ -419,12 +435,12 @@ class TriggerboxDevice(threading.Thread):
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
 
         self.expected_trigger_rate = rate_actual
-        self.notify_framerate(self.expected_trigger_rate)
+        self._notify_framerate(self.expected_trigger_rate)
 
     def pause_and_reset(self, pause_duration_seconds):
         orig_value = self.expected_trigger_rate
         self.expected_trigger_rate = np.nan
-        self.notify_framerate(self.expected_trigger_rate)
+        self._notify_framerate(self.expected_trigger_rate)
 
         self.outq.put( ('stop_pulses_and_reset',) ) # stop clock, reset pulsecounter
         self._clear_data() # clear old data
@@ -433,16 +449,7 @@ class TriggerboxDevice(threading.Thread):
         self.outq.put( ('start_pulses',) ) # stop clock, reset pulsecounter
 
         self.expected_trigger_rate = orig_value
-        self.notify_framerate(self.expected_trigger_rate)
-
-    def notify_framerate(self, expected_trigger_rate):
-        self._log.info('framerate: %f' % expected_trigger_rate)
-
-    def notify_clockmodel(self, gain, offset):
-        self._log.info('gain: %s offset: %s' % (gain, offset))
-
-    def notify_fatal_error(self, msg):
-        self._log.critical(msg)
+        self._notify_framerate(self.expected_trigger_rate)
 
     def set_aout_ab_volts(self, aout0_v, aout1_v):
         aout0 = volts_to_dac(aout0_v)

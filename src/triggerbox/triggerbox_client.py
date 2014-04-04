@@ -5,13 +5,14 @@ import roslib
 roslib.load_manifest('triggerbox')
 import rospy
 
+from triggerbox.api import TriggerboxAPI
 from triggerbox.time_model import get_time_model, TimeFitError
 from triggerbox.msg import TriggerClockModel
 from triggerbox.srv import SetFramerate
 
 import std_msgs.msg
 
-class TriggerboxClient:
+class TriggerboxClient(TriggerboxAPI):
     '''a client to coordinate synchronization and time reconstruction'''
     def __init__(self, host_node='/triggerbox_host' ):
         rospy.Subscriber(host_node+'/time_model',
@@ -31,9 +32,12 @@ class TriggerboxClient:
                          host_node+'/set_framerate',
                          SetFramerate)
 
+        self._host_node = host_node
+
         self._gain = np.nan
         self._offset = np.nan
         self._expected_framerate = None
+        self._got_estimate = False
 
     def _on_expected_framerate(self,msg):
         value = msg.data
@@ -41,10 +45,18 @@ class TriggerboxClient:
             self._expected_framerate = None
         else:
             self._expected_framerate = value
+        self._api_callback(self.framerate_callback, self._expected_framerate)
 
     def _on_trigger_clock_model(self,msg):
         self._gain = msg.gain
         self._offset = msg.offset
+        self._api_callback(self.clockmodel_callback, self._gain, self._offset)
+
+        if not self._got_estimate:
+            have_estimate = self.have_estimate()
+            if have_estimate:
+                self._api_callback(self.connected_callback, self._host_node, "ROS")
+                self._got_estimate = True
 
     def have_estimate(self):
         return (not np.isnan(self._gain)) and (not np.isnan(self._offset))
@@ -52,7 +64,7 @@ class TriggerboxClient:
     def wait_for_estimate(self):
         while not self.have_estimate():
             rospy.loginfo('triggerbox_client: waiting for clockmodel estimate')
-            time.sleep(0.5)
+            rospy.sleep(0.5)
 
     def timestamp2framestamp(self, timestamp ):
         return (timestamp-self._offset)/self._gain
@@ -67,7 +79,7 @@ class TriggerboxClient:
                 break
             if not wait_for_valid:
                 break
-            time.sleep(0.01)
+            rospy.sleep(0.1)
         return result
 
     def set_frames_per_second(self,value):
@@ -85,3 +97,11 @@ class TriggerboxClient:
         rospy.loginfo('trigger_client: requesting synchronization')
         msg = std_msgs.msg.Float32( pause_duration_seconds )
         self.sync_pub.publish( msg )
+
+if __name__=='__main__':
+    rospy.init_node('triggerbox_client')
+    tb = TriggerboxClient()
+    tb.connected_callback = lambda _n, _d: rospy.loginfo("connected %s %s" % (_n, _d))
+    tb.wait_for_estimate()
+    rospy.spin()
+

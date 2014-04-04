@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 import argparse
 import numpy as np
+import time
 
 import roslib; roslib.load_manifest('triggerbox')
 
 import rospy
+
+from triggerbox.api import TriggerboxAPI
 from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw
 from triggerbox.srv import SetFramerate, SetFramerateResponse
 from triggerbox.triggerbox_device import TriggerboxDevice
 
 import std_msgs
 
-class TriggerboxHost(TriggerboxDevice):
+class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
     '''an in-process version of the triggerbox client with identical API'''
     def __init__(self, device, write_channel_name, channel_name):
 
@@ -47,18 +50,25 @@ class TriggerboxHost(TriggerboxDevice):
             self.pub_rate.publish(self._expected_framerate)
 
     #Callbacks from the underlying hardware
-    def notify_framerate(self, expected_trigger_rate):
+    def _notify_framerate(self, expected_trigger_rate):
         self._expected_framerate = expected_trigger_rate
         self.pub_rate.publish(self._expected_framerate)
+        self._api_callback(self.framerate_callback, expected_trigger_rate)
 
-    def notify_clockmodel(self, gain, offset):
+    def _notify_clockmodel(self, gain, offset):
         self._gain = gain
         self._offset = offset
         self.pub_time.publish(self._gain, self._offset)
+        self._api_callback(self.clockmodel_callback, gain, offset)
 
-    def notify_fatal_error(self, msg):
+    def _notify_fatal_error(self, msg):
         rospy.logfatal(msg)
         rospy.signal_shutdown(msg)
+        self._api_callback(self.fatal_error_callback, msg)
+
+    def _notify_connected(self, name, device):
+        rospy.loginfo("triggerbox_host: to '%s' via %s" % (name, device))
+        self._api_callback(self.connected_callback, name, device)
 
     #ClientAPI
     def have_estimate(self):
