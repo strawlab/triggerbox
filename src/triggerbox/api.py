@@ -10,6 +10,10 @@ class TriggerboxAPI:
         if cb_obj is not None:
             cb_obj(*args)
 
+    @property
+    def expected_framerate(self):
+        return self._expected_framerate
+
     #ClientAPI
     def have_estimate(self):
         raise NotImplementedError
