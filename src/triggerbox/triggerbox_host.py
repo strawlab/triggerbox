@@ -153,9 +153,6 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         rospy.loginfo('triggerbox_host: synchronizing')
         self.pause_and_reset(pause_duration_seconds)
 
-        msg = std_msgs.msg.Float32( pause_duration_seconds )
-        self.sync_pub.publish( msg )
-
 if __name__=='__main__':
     rospy.init_node('triggerbox_host')
     tb = TriggerboxHost('/dev/ttyUSB0', None, None)
