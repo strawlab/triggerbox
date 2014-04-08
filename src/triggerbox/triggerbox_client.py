@@ -75,6 +75,7 @@ class TriggerboxClient(TriggerboxAPI):
         while not self.have_estimate():
             rospy.loginfo('triggerbox_client: waiting for clockmodel estimate')
             rospy.sleep(0.5)
+        rospy.loginfo('triggerbox_client: got clockmodel estimate')
 
     def timestamp2framestamp(self, timestamp ):
         return (timestamp-self._offset)/self._gain
