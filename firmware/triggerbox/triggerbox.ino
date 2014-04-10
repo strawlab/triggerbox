@@ -370,9 +370,9 @@ const unsigned short AOUT_LDAC = 7;
 volatile pulsenumber_dtype pulsenumber=0;
     // ---- set TCCR1B ----------
     // high bits = 0,0,0
-    //WGM13, WGM12 = 1,1
+    // WGM13, WGM12 = 1,1
     // CS1 = 0,1,0 (starts timer1 CS=8) (clock select)
-uint8_t tccr1b_when_running = 0x1A;
+uint8_t tccr1b_when_running = 0x18; //stopped. started in setup()
 #ifdef WITH_AOUT
 MCP4822 analogOut = MCP4822(AOUT_CS,AOUT_LDAC);
 #endif
@@ -384,14 +384,16 @@ ISR(TIMER1_COMPA_vect)
 }
 
 // Setup timer1 ----------------------------------------------------------------
-void setup_timer1() {
+void setup_timer1(uint8_t tccr1b, uint16_t icr1) {
+    tccr1b_when_running = tccr1b;
+
     cli();
 
     // Set output compare to generate trigger pulse width
     OCR1A = 0x03e8;
 
     // Set TOP
-    ICR1 = 0x2710;
+    ICR1 = icr1;
 
     // ---- set TCCR1A ----------
     // set Compare Output Mode for Fast PWM, with TOP in ICR1
@@ -399,7 +401,7 @@ void setup_timer1() {
     // COM1B1:0 = 1,0 clear OC1B on compare match
     // WGM11, WGM10 = 1,0
     TCCR1A = 0xAA;
-    TCCR1B = tccr1b_when_running;
+    TCCR1B = tccr1b;
 
     TIMSK1 |= (1 << OCIE1A);
 
@@ -426,7 +428,8 @@ void setup() {
     // start serial port at 115200 bps:
     Serial.begin(115200);
 
-    setup_timer1();
+    // start at 25fps
+    setup_timer1(0x1B, 0x2710);
 }
 
 // Send data with our simple protocol to the host computer ---------------------

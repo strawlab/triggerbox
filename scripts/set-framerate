@@ -21,19 +21,8 @@ if __name__ == "__main__":
     rospy.init_node('triggerbox_set_framerate')
 
     tc = TriggerboxClient()
-    tc.set_frames_per_second(fps)
+    tc.set_frames_per_second_blocking(fps)
 
-    tries = 10
-    while not rospy.is_shutdown():
-        if (tc.expected_framerate is not None) and (abs(tc.expected_framerate-fps) < 0.01):
-            break
-        elif tries == 0:
-            break
-        else:
-            time.sleep(0.2)
-            tries -= 1
-
-    rospy.signal_shutdown('set framerate' if tries else 'unable to set framerate')
             
 
 
