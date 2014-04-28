@@ -49,19 +49,19 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'set_triggerrate'),
                 std_msgs.msg.Float32,
-                lambda _msg: self.set_triggerrate(_msg.data))
+                self._on_set_triggerrate)
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'pause_and_reset'),
                 std_msgs.msg.Float32,
-                lambda _msg: self.pause_and_reset(_msg.data))
+                self._on_pause_and_reset)
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'aout_volts'),
                 AOutVolts,
-                lambda _msg: self.set_aout_ab_volts(_msg.aout0,_msg.aout1))
+                self._on_aout_volts)
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'aout_raw'),
                 AOutRaw,
-                lambda _msg: self.set_aout_ab_raw(_msg.aout0,_msg.aout1))
+                self._on_aout_raw)
 
         rospy.Service(
                 _make_ros_topic(ros_topic_base,'set_framerate'),
@@ -70,6 +70,22 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
 
         # emit expected frame rate every 5 seconds
         rospy.Timer(rospy.Duration(5.0), self._on_emit_framerate)
+
+    def _on_set_triggerrate(self,_msg):
+        rospy.loginfo('triggerbox_host: _on_set_triggerrate %s'%_msg.data)
+        self.set_triggerrate(_msg.data)
+
+    def _on_pause_and_reset(self,_msg):
+        rospy.loginfo('triggerbox_host: _on_pause_and_reset %s'%_msg.data)
+        self.pause_and_reset(_msg.data)
+
+    def _on_aout_volts(self,_msg):
+        rospy.loginfo('triggerbox_host: _on_aout_volts %s'%_msg)
+        self.set_aout_ab_volts(_msg.aout0,_msg.aout1)
+
+    def _on_aout_raw(self,_msg):
+        rospy.loginfo('triggerbox_host: _on_aout_raw %s'%_msg)
+        self.set_aout_ab_raw(_msg.aout0,_msg.aout1)
 
     def _on_set_framerate_service(self, req):
         self.set_frames_per_second_blocking(req.data)
