@@ -7,7 +7,7 @@ import rospy
 
 from triggerbox.api import TriggerboxAPI
 from triggerbox.time_model import get_time_model, TimeFitError
-from triggerbox.msg import TriggerClockModel, TriggerClockMeasurement
+from triggerbox.msg import TriggerClockModel, TriggerClockMeasurement, AOutVolts
 from triggerbox.srv import SetFramerate
 
 import std_msgs.msg
@@ -31,6 +31,9 @@ class TriggerboxClient(TriggerboxAPI):
         self.sync_pub = rospy.Publisher(
                          host_node+'/pause_and_reset',
                          std_msgs.msg.Float32)
+        self.aout_pub = rospy.Publisher(
+                         host_node+'/aout_volts',
+                         AOutVolts)
 
         self._fps_srv_url = host_node+'/set_framerate'
         self.fps_srv = rospy.ServiceProxy(
@@ -110,6 +113,12 @@ class TriggerboxClient(TriggerboxAPI):
         rospy.loginfo('triggerbox_client: requesting synchronization')
         msg = std_msgs.msg.Float32( pause_duration_seconds )
         self.sync_pub.publish( msg )
+
+    def set_aout_ab_volts(self, aout0, aout1 ):
+        msg = AOutVolts()
+        msg.aout0 = aout0
+        msg.aout1 = aout1
+        self.aout_pub.publish()
 
 if __name__=='__main__':
     rospy.init_node('triggerbox_client')

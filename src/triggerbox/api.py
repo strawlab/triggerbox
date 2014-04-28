@@ -44,4 +44,5 @@ class TriggerboxAPI:
     def synchronize(self, pause_duration_seconds=2 ):
         raise NotImplementedError
 
-
+    def set_aout_ab_volts(self, aout0, aout1):
+        raise NotImplementedError
