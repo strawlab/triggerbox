@@ -57,11 +57,11 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'aout_volts'),
                 AOutVolts,
-                lambda _msg: self.set_aout_ab_volts(self,_msg.aout0,_msg.aout1))
+                lambda _msg: self.set_aout_ab_volts(_msg.aout0,_msg.aout1))
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'aout_raw'),
                 AOutRaw,
-                lambda _msg: self.set_aout_ab_raw(self,_msg.aout0,_msg.aout1))
+                lambda _msg: self.set_aout_ab_raw(_msg.aout0,_msg.aout1))
 
         rospy.Service(
                 _make_ros_topic(ros_topic_base,'set_framerate'),
