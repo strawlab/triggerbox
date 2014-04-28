@@ -511,7 +511,7 @@ void loop() {
             // version request
             static struct timed_sample version_request;
 
-            version_request.value = 12;
+            version_request.value = 13;
 
             uint8_t SaveSREG_ = SREG;   // save interrupt flag
             cli(); // disable interrupts
@@ -566,6 +566,7 @@ void loop() {
         } else if (cmd=='O') {
             // AOUT values
             uint8_t aout0_0, aout0_1,   aout1_0, aout1_1;
+            uint8_t aout_sequence;
             int aout0, aout1;
 
             if (value=='=') {
@@ -580,6 +581,22 @@ void loop() {
 #ifdef WITH_AOUT
                 analogOut.setValue_AB(aout0, aout1);
 #endif
+                aout_sequence = Serial_read_blocking();
+
+
+            static struct timed_sample aout_confirm;
+
+            aout_confirm.value = aout_sequence;
+
+            uint8_t SaveSREG_ = SREG;   // save interrupt flag
+            cli(); // disable interrupts
+
+                aout_confirm.pulsenumber = pulsenumber;
+                aout_confirm.ticks = TCNT1;
+
+            SREG = SaveSREG_; // restore interrupt flags
+            send_data(aout_confirm,'O');
+
             }
 
         } else if (cmd=='N') {

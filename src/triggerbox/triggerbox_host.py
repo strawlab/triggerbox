@@ -8,7 +8,8 @@ import roslib; roslib.load_manifest('triggerbox')
 import rospy
 
 from triggerbox.api import TriggerboxAPI
-from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw, TriggerClockMeasurement
+from triggerbox.msg import TriggerClockModel, AOutVolts, AOutRaw, AOutConfirm, \
+     TriggerClockMeasurement
 from triggerbox.srv import SetFramerate, SetFramerateResponse
 from triggerbox.triggerbox_device import TriggerboxDevice
 
@@ -43,6 +44,9 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         self.pub_raw = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'raw_measurements'),
                                 TriggerClockMeasurement)
+        self.pub_aout_confirm = rospy.Publisher(
+                                _make_ros_topic(ros_topic_base,'aout_confirm'),
+                                AOutConfirm)
 
         super(TriggerboxHost,self).__init__(device, write_channel_name, channel_name)
 
@@ -119,6 +123,16 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
 
         self.pub_raw.publish(start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
         self._api_callback(self.clock_measurement_callback, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp)
+
+    def _notify_aout_confirm(self, pulsenumber, fraction_n_of_255, aout0, aout1):
+        if fraction_n_of_255 > 255:
+            #occasionally, when changing framerates, and due to the async
+            #and out-of-order nature of comms with the hardware, we gen a
+            #fraction value that exceeds 255 here. Ignore it.
+            rospy.logerr("triggerbox_host: invalid raw clock measurment. fraction %s exceeds 255" % fraction_n_of_255)
+            return
+
+        self.pub_aout_confirm.publish(pulsenumber, fraction_n_of_255, aout0, aout1)
 
     def _notify_fatal_error(self, msg):
         rospy.logfatal(msg)

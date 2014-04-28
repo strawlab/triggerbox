@@ -60,6 +60,7 @@ class SerialThread(threading.Thread):
     def __init__(self,args,device, write_channel_name, channel_name):
         super(SerialThread,self).__init__(name="triggerbox serial thread",)
         self.__args=args
+        self._aout_seq = 0
         self.ICR1_AND_PRESCALER = None
 
         self.device = device
@@ -68,6 +69,7 @@ class SerialThread(threading.Thread):
 
         self._write_channel_name = write_channel_name
         self._channel_name = channel_name
+        self._last_aout_sequence = None, None, None
         self._log = logging.getLogger("root.serial")
 
     def _set_ICR1_AND_PRESCALER( self, new_value ):
@@ -90,9 +92,11 @@ class SerialThread(threading.Thread):
         assert len(aout0_chars)==2
         aout1_chars = struct.pack('<H', aout1) # little-endian unsigned short
         assert len(aout1_chars)==2
-        chars = aout0_chars + aout1_chars
-        vals = [ord(c) for c in chars]
+        chars = aout0_chars + aout1_chars + chr(self._aout_seq)
         self.ser.write('O='+chars)
+        self._last_aout_sequence = self._aout_seq, aout0, aout1
+        self._aout_seq += 1
+        self._aout_seq = self._aout_seq % 256
 
     def run(self):
         self.last_time = time_func() + 0.5 # give half a second to flush buffers
@@ -105,7 +109,7 @@ class SerialThread(threading.Thread):
 
         self._name_check_started = None
 
-        self.raw_q, self.time_q, self.outq = self.__args
+        self.raw_q, self.time_q, self.outq, self.aout_q = self.__args
 
         self.ser = _setup_serial(device=self.device)
         self.ser.open()
@@ -165,7 +169,7 @@ class SerialThread(threading.Thread):
                     raise RuntimeError('no channel name check response')
 
     def _handle_version(self, value, pulsenumber, count):
-        assert value==12
+        assert value==13
         self._vquery_time = time_func()
         self._version_check_done = True
 
@@ -213,6 +217,7 @@ class SerialThread(threading.Thread):
         ino_time_estimate = (now+send_timestamp)*0.5
 
         if self.ICR1_AND_PRESCALER is None:
+            self._log.warn('No clock measurements until framerate set.')
             return
 
         icr1, prescaler = self.ICR1_AND_PRESCALER
@@ -223,6 +228,22 @@ class SerialThread(threading.Thread):
 
         self.raw_q.put( (send_timestamp, pulsenumber,
                          int(np.round(frac * 255.0)), now) )
+
+    def _handle_returned_aout(self, seq, pulsenumber, count):
+        orig_seq, aout0, aout1 = self._last_aout_sequence
+        if seq != orig_seq:
+            self._log.warn('AOUT confirmation has wrong sequence number.')
+            return
+
+        if self.ICR1_AND_PRESCALER is None:
+            self._log.warn('No AOUT confirmation until framerate set.')
+            return
+
+        icr1, prescaler = self.ICR1_AND_PRESCALER
+        frac = float(count)/icr1
+
+        self.aout_q.put( (pulsenumber, int(np.round(frac * 255.0)),
+                          aout0, aout1))
 
     def _h(self,buf):
         result = buf
@@ -246,7 +267,7 @@ class SerialThread(threading.Thread):
                 else:
                     raise RuntimeError('checksum mismatch')
 
-                if packet_type in ('P','V','L'):
+                if packet_type in ('P','V','O'):
                     assert payload_len==7
                     value = bytes[0]
                     e0,e1,e2,e3 = bytes[1:5]
@@ -259,8 +280,8 @@ class SerialThread(threading.Thread):
                         self._handle_returned_timestamp(value, pulsenumber, count )
                     elif packet_type == 'V':
                         self._handle_version(value, pulsenumber, count )
-                    elif packet_type == 'L':
-                        pass
+                    elif packet_type == 'O':
+                        self._handle_returned_aout(value, pulsenumber, count )
 
                 elif packet_type=='N':
                     self._handle_name(check_buf)
@@ -287,6 +308,11 @@ def ensure_valid_name(channel_name):
     assert len(channel_name) < 250
     assert channel_name.find(chr(0)) == -1
 
+def queue_to_func(q,func):
+    while 1:
+        raw = q.get()
+        func(*raw)
+
 class TriggerboxDevice(threading.Thread):
 
     def __init__(self, device, write_channel_name, channel_name):
@@ -302,12 +328,20 @@ class TriggerboxDevice(threading.Thread):
         self.raw_q = Queue.Queue()
         self.time_q = Queue.Queue()
         self.outq = Queue.Queue()
+        self.aout_q = Queue.Queue()
+        aout_sender_thread = threading.Thread( target=queue_to_func,
+                                               args=(self.aout_q,
+                                                     self._notify_aout_confirm),
+                                               )
+        aout_sender_thread.daemon = True
+        aout_sender_thread.start()
 
         self.expected_trigger_rate = np.nan
 
         self.times = []
 
-        self.ser_thread = SerialThread(args=(self.raw_q,self.time_q,self.outq),
+        self.ser_thread = SerialThread(args=(
+            self.raw_q,self.time_q,self.outq,self.aout_q),
                                        device=device,
                                        write_channel_name=write_channel_name,
                                        channel_name=channel_name)
