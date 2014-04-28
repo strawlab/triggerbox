@@ -110,7 +110,7 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
         self._api_callback(self.fatal_error_callback, msg)
 
     def _notify_connected(self, name, device):
-        rospy.loginfo("triggerbox_host: to '%s' via %s" % (name, device))
+        rospy.loginfo("triggerbox_host: connected to %r on device %r" % (name, device))
         self._api_callback(self.connected_callback, name, device)
 
     #ClientAPI

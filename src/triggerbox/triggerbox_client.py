@@ -94,20 +94,20 @@ class TriggerboxClient(TriggerboxAPI):
         return result
 
     def set_frames_per_second(self,value):
-        rospy.loginfo('trigger_client: setting FPS to %s' % value)
+        rospy.loginfo('triggerbox_client: setting FPS to %s' % value)
         self._expected_framerate = None # clear old value
         msg = std_msgs.msg.Float32(value)
         self.fps_pub.publish(msg)
 
     def set_frames_per_second_blocking(self,value):
-        rospy.loginfo('trigger_client: waiting for host: %s' % self._fps_srv_url)
+        rospy.loginfo('triggerbox_client: waiting for host: %s' % self._fps_srv_url)
         rospy.wait_for_service(self._fps_srv_url)
-        rospy.loginfo('trigger_client: setting FPS to %s' % value)
+        rospy.loginfo('triggerbox_client: setting FPS to %s' % value)
         self._expected_framerate = None # clear old value
         self.fps_srv(value)
 
     def synchronize(self, pause_duration_seconds=2 ):
-        rospy.loginfo('trigger_client: requesting synchronization')
+        rospy.loginfo('triggerbox_client: requesting synchronization')
         msg = std_msgs.msg.Float32( pause_duration_seconds )
         self.sync_pub.publish( msg )
 

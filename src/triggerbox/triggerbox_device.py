@@ -403,7 +403,7 @@ class TriggerboxDevice(threading.Thread):
     def set_triggerrate(self, rate_ideal):
 
         if rate_ideal == 0:
-            self._log.info('trigger_host: setting FPS to ZERO')
+            self._log.info('triggerbox_device: setting FPS to ZERO')
             self.outq.put( ('stop_pulses',) )
             self._clear_data()
             self.expected_trigger_rate = rate_ideal
