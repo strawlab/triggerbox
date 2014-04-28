@@ -118,7 +118,7 @@ class TriggerboxClient(TriggerboxAPI):
         msg = AOutVolts()
         msg.aout0 = aout0
         msg.aout1 = aout1
-        self.aout_pub.publish()
+        self.aout_pub.publish(msg)
 
 if __name__=='__main__':
     rospy.init_node('triggerbox_client')
