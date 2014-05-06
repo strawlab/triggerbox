@@ -12,4 +12,5 @@
   <depend package="rosmsg"/>
 
   <rosdep name="python-serial"/>
+  <rosdep name="arduino-mk"/>
 </package>
