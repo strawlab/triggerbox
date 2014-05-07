@@ -40,7 +40,8 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
                                 TriggerClockModel)
         self.pub_rate = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'expected_framerate'),
-                                std_msgs.msg.Float32)
+                                std_msgs.msg.Float32,
+                                latch=True)
         self.pub_raw = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'raw_measurements'),
                                 TriggerClockMeasurement)
