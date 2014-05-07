@@ -30,5 +30,10 @@ if __name__=='__main__':
                         write_channel_name=args.write_channel_name,
                         channel_name=args.channel_name,
                         )
+
+    fr = rospy.get_param('~frames_per_second', -1.0)
+    if fr != -1.0:
+        tb.set_frames_per_second_blocking(fr)
+
     rospy.spin()
 
