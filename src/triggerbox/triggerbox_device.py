@@ -417,6 +417,9 @@ class TriggerboxDevice(threading.Thread):
     def _notify_clock_measurement(self, start_timestamp, pulsenumber, fraction_n_of_255, stop_timestamp):
         pass
 
+    def _notify_aout_confirm(self, pulsenumber, fraction_n_of_255, aout0, aout1):
+        pass
+
     def _notify_fatal_error(self, msg):
         self._log.critical(msg)
 
