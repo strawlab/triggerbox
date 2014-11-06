@@ -25,6 +25,7 @@ clock.
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <SPI.h>
+#include <UDEV.h>
 
 #define WITH_AOUT
 #ifdef WITH_AOUT
@@ -377,6 +378,8 @@ uint8_t tccr1b_when_running = 0x18; //stopped. started in setup()
 MCP4822 analogOut = MCP4822(AOUT_CS,AOUT_LDAC);
 #endif
 
+UDEV udev(Serial);
+
 // Interrupt service routine for timer1 compare -------------------------------
 ISR(TIMER1_COMPA_vect)
 {
@@ -421,12 +424,16 @@ void setup() {
 #endif
 
     pinMode(LEDPin, OUTPUT);
-    digitalWrite(LEDPin, HIGH);
-
     pinMode(TrigPin, OUTPUT);
 
     // start serial port at 115200 bps:
     Serial.begin(115200);
+
+    //wait for 5 seconds for an id
+    udev.begin();
+    udev.read_and_process(5.0, LEDPin);
+
+    digitalWrite(LEDPin, HIGH);
 
     // start at 25fps
     setup_timer1(0x1B, 0x2710);
@@ -600,45 +607,7 @@ void loop() {
             }
 
         } else if (cmd=='N') {
-            // Channel name
-            char next_byte;
-            char eeprom_idx = 0;
-
-            if (value=='=') {
-                while (1) {
-                    while (Serial.available() == 0) {
-                        delay(10);
-                    }
-                    next_byte = Serial.read();
-                    EEPROM.write( eeprom_idx, next_byte );
-                    eeprom_idx++;
-                    if (next_byte==0) {
-                        break;
-                    }
-                }
-            } else if (value=='?') {
-                String out_name="";
-                while (1) {
-                    next_byte = EEPROM.read( eeprom_idx );
-                    if (next_byte==0) {
-                        break;
-                    }
-                    out_name.concat(next_byte);
-                    eeprom_idx++;
-                }
-                send_data_string(&out_name,'N');
-            } else {
-                //flash LED rapidly for error
-                digitalWrite(LEDPin,HIGH);
-                while (1) {
-                    digitalWrite(LEDPin, HIGH);
-                    delay(100);
-                    digitalWrite(LEDPin, LOW);
-                    delay(100);
-                }
-            }
-
-
+            udev.process(cmd, value);
         }
 
     }
