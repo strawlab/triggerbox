@@ -57,18 +57,14 @@ def _setup_serial(device=None):
     return ser
 
 class SerialThread(threading.Thread):
-    def __init__(self,args,device, write_channel_name, channel_name):
+    def __init__(self,args,device):
         super(SerialThread,self).__init__(name="triggerbox serial thread",)
         self.__args=args
         self._aout_seq = 0
         self.ICR1_AND_PRESCALER = None
 
         self.device = device
-        self.channel_name = ''
-        self.name_check_done = False
 
-        self._write_channel_name = write_channel_name
-        self._channel_name = channel_name
         self._last_aout_sequence = None, None, None
         self._log = logging.getLogger("root.serial")
 
@@ -105,9 +101,7 @@ class SerialThread(threading.Thread):
 
         self._vquery_time = time_func()+5.0
         self._version_check_started = False
-        self._version_check_done = False
-
-        self._name_check_started = None
+        self.version_check_done = False
 
         self.raw_q, self.time_q, self.outq, self.aout_q = self.__args
 
@@ -156,7 +150,7 @@ class SerialThread(threading.Thread):
                 self.last_time = now
 
             # version check
-            if not self._version_check_done:
+            if not self.version_check_done:
                 if not self._version_check_started:
                     if now >= self._vquery_time:
                         self.ser.write( 'V?' )
@@ -164,36 +158,11 @@ class SerialThread(threading.Thread):
                 if (now - self._vquery_time) > 5.0:
                     raise RuntimeError('no version response')
 
-            if not self.name_check_done:
-                if self._name_check_started is not None and (now - self._name_check_started) > 5.0:
-                    raise RuntimeError('no channel name check response')
-
     def _handle_version(self, value, pulsenumber, count):
         assert value==13
         self._vquery_time = time_func()
-        self._version_check_done = True
-
+        self.version_check_done = value
         self._log.info('connected to triggerbox firmware version %d' % value )
-
-        # version check is OK. write channel name if desired.
-        if self._write_channel_name is not None:
-            payload = 'N='+self._write_channel_name+'\0'
-            self.ser.write( payload )
-            self._write_channel_name = None # don't send again
-
-        # channel name check
-        if self._name_check_started is None:
-            self.ser.write( 'N?' )
-            self._name_check_started = time_func()
-            self._log.info('querying channel name')
-
-    def _handle_name(self,actual_name):
-        #save the true name
-        self.channel_name = actual_name
-        self.name_check_done = True
-        if self._channel_name is not None:
-            assert self.channel_name==actual_name, 'expected: %r' % self._channel_name
-            self._channel_name = None
 
     def _handle_returned_timestamp(self, qi, pulsenumber, count):
         now = time_func()
@@ -282,9 +251,6 @@ class SerialThread(threading.Thread):
                         self._handle_version(value, pulsenumber, count )
                     elif packet_type == 'O':
                         self._handle_returned_aout(value, pulsenumber, count )
-
-                elif packet_type=='N':
-                    self._handle_name(check_buf)
                 else:
                     raise ValueError('unknown packet type')
 
@@ -301,13 +267,6 @@ def volts_to_dac(volts):
     dac = int(np.round(dac_float))
     return dac
 
-def ensure_valid_name(channel_name):
-    if channel_name is None:
-        return
-    assert len(channel_name) >= 0
-    assert len(channel_name) < 250
-    assert channel_name.find(chr(0)) == -1
-
 def queue_to_func(q,func):
     while 1:
         raw = q.get()
@@ -315,15 +274,12 @@ def queue_to_func(q,func):
 
 class TriggerboxDevice(threading.Thread):
 
-    def __init__(self, device, write_channel_name, channel_name):
+    def __init__(self, device):
         super(TriggerboxDevice,self).__init__(name="triggerbox device")
         self.daemon = True
 
         self._connected = False
         self._log = logging.getLogger("trigger.device")
-
-        ensure_valid_name(write_channel_name)
-        ensure_valid_name(channel_name)
 
         self.raw_q = Queue.Queue()
         self.time_q = Queue.Queue()
@@ -342,9 +298,7 @@ class TriggerboxDevice(threading.Thread):
 
         self.ser_thread = SerialThread(args=(
             self.raw_q,self.time_q,self.outq,self.aout_q),
-                                       device=device,
-                                       write_channel_name=write_channel_name,
-                                       channel_name=channel_name)
+                                       device=device)
         self.ser_thread.daemon = True
         self.ser_thread.start()
 
@@ -352,12 +306,12 @@ class TriggerboxDevice(threading.Thread):
         while True:
             if not self.ser_thread.is_alive():
                 raise RuntimeError('serial thread died')
-            if self.ser_thread.name_check_done:
+            if self.ser_thread.version_check_done:
                 break
             time.sleep(0.1)
 
         self._connected = True
-        self._notify_connected(self.ser_thread.channel_name, device)
+        self._notify_connected('v:%s' % self.ser_thread.version_check_done, device)
 
         #we need to talk to the serial device reguarly, so we implement
         #our own scheduler here
@@ -424,7 +378,7 @@ class TriggerboxDevice(threading.Thread):
         self._log.critical(msg)
 
     def _notify_connected(self, name, device):
-        self._log.info("connected to '%s' via %s" % (name, device))
+        self._log.info("connected to %s" % device)
 
     def run(self):
         i = 0
@@ -513,7 +467,7 @@ class TriggerboxDevice(threading.Thread):
 if __name__=='__main__':
     import itertools
     logging.basicConfig(level=logging.DEBUG)
-    td = TriggerboxDevice('/dev/ttyUSB0', None, None)
+    td = TriggerboxDevice('/dev/ttyUSB0')
     for i in itertools.cycle(range(5,200,10)):
         td.set_triggerrate(i)
         time.sleep(10)

@@ -9,27 +9,14 @@ from triggerbox.triggerbox_host import TriggerboxHost
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', type=str, default=None,
+                        required=True,
                         help='specify the USB device (e.g. "/dev/ttyACM0")')
-
-    parser.add_argument('--write-channel-name', type=str, default=None,
-                        help='write NAME to EEPROM of device')
-
-    parser.add_argument('--channel-name', type=str, default=None,
-                        help='only use device with NAME in EEPROM')
 
     argv = rospy.myargv()
     args = parser.parse_args(argv[1:])
 
-    if ((args.write_channel_name is not None) and
-        (args.channel_name is not None)):
-        raise RuntimeError('At most, one of --write-channel-name and '
-                           '--channel-name may be specified at once')
-
     rospy.init_node('triggerbox_host')
-    tb = TriggerboxHost(device=args.device,
-                        write_channel_name=args.write_channel_name,
-                        channel_name=args.channel_name,
-                        )
+    tb = TriggerboxHost(device=args.device)
 
     fr = rospy.get_param('~frames_per_second', -1.0)
     if fr != -1.0:

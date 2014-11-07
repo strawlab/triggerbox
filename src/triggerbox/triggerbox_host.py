@@ -29,7 +29,7 @@ def _make_ros_topic(base, other):
 
 class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
     '''an in-process version of the triggerbox client with identical API'''
-    def __init__(self, device, write_channel_name, channel_name, ros_topic_base='~'):
+    def __init__(self, device,ros_topic_base='~'):
 
         self._gain = np.nan
         self._offset = np.nan
@@ -49,7 +49,7 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
                                 _make_ros_topic(ros_topic_base,'aout_confirm'),
                                 AOutConfirm)
 
-        super(TriggerboxHost,self).__init__(device, write_channel_name, channel_name)
+        super(TriggerboxHost,self).__init__(device)
 
         rospy.Subscriber(
                 _make_ros_topic(ros_topic_base,'set_triggerrate'),
@@ -186,7 +186,7 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
 
 if __name__=='__main__':
     rospy.init_node('triggerbox_host')
-    tb = TriggerboxHost('/dev/ttyUSB0', None, None)
+    tb = TriggerboxHost('/dev/ttyUSB0')
     tb.set_frames_per_second_blocking(25.0)
     tb.wait_for_estimate()
     rospy.spin()
