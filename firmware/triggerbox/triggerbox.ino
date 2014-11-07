@@ -431,7 +431,7 @@ void setup() {
 
     //wait for 5 seconds for an id
     udev.begin();
-    udev.read_and_process(5.0, LEDPin);
+    udev.setup(LEDPin);
 
     digitalWrite(LEDPin, HIGH);
 
