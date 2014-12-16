@@ -65,6 +65,8 @@ class SerialThread(threading.Thread):
 
         self.device = device
 
+        self.version_check_done = False
+
         self._last_aout_sequence = None, None, None
         self._log = logging.getLogger("root.serial")
 
@@ -101,7 +103,6 @@ class SerialThread(threading.Thread):
 
         self._vquery_time = time_func()+5.0
         self._version_check_started = False
-        self.version_check_done = False
 
         self.raw_q, self.time_q, self.outq, self.aout_q = self.__args
 
