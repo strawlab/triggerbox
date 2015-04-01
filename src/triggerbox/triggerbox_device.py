@@ -26,36 +26,6 @@ LOW_VOLTS = 0.0063
 HIGH_VOLTS = 4.13
 RANGE_VOLTS = HIGH_VOLTS-LOW_VOLTS
 
-class NoValidSerialError(serial.serialutil.SerialException):
-    pass
-
-def _setup_serial(device=None):
-    port = device
-    if port is not None:
-        ports = [port]
-    else:
-        if sys.platform.startswith('linux'):
-            ports = ['/dev/ttyUSB0',
-                     '/dev/ttyACM0',
-                     ]
-        else:
-            raise RuntimeError('Do not know default serial ports on your '
-                               'platform.')
-    ser = None
-    for port in ports:
-        try:
-            ser = serial.Serial(port=port,
-                                timeout=0.01,
-                                baudrate=115200,
-                                )
-        except serial.serialutil.SerialException:
-            continue
-        else:
-            break
-    if ser is None:
-        raise NoValidSerialError('Could not find serial port at any of %r'%ports)
-    return ser
-
 class SerialThread(threading.Thread):
     def __init__(self,args,device):
         super(SerialThread,self).__init__(name="triggerbox serial thread",)
@@ -106,8 +76,9 @@ class SerialThread(threading.Thread):
 
         self.raw_q, self.time_q, self.outq, self.aout_q = self.__args
 
-        self.ser = _setup_serial(device=self.device)
-        self.ser.open()
+        self.ser = serial.Serial(port=self.device,
+                                 timeout=0.01,
+                                 baudrate=115200)
 
         buf = ''
         while 1:
