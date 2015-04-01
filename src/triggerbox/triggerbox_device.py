@@ -71,8 +71,8 @@ class SerialThread(threading.Thread):
         self._qi = 0
         self._queries = collections.OrderedDict()
 
-        self._vquery_time = time_func()+5.0
         self._version_check_started = False
+        self._connect_time = self._vquery_time = time_func()
 
         self.raw_q, self.time_q, self.outq, self.aout_q = self.__args
 
@@ -125,9 +125,15 @@ class SerialThread(threading.Thread):
             if not self.version_check_done:
                 if not self._version_check_started:
                     if now >= self._vquery_time:
+                        self._log.info('checking firmware version')
                         self.ser.write( 'V?' )
                         self._version_check_started = True
-                if (now - self._vquery_time) > 5.0:
+                        self._vquery_time = time_func()+5.0
+                #retry every second
+                if (now - self._vquery_time) > 1.0:
+                    self._version_check_started = False
+                #give up after 10 seconds
+                if (now - self._connect_time) > 10.0:
                     raise RuntimeError('no version response')
 
     def _handle_version(self, value, pulsenumber, count):
