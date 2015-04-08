@@ -7,6 +7,7 @@ import argparse
 import logging
 
 from time_model import get_time_model, TimeFitError
+from arduinoudev import serial_handshake
 
 def uint32(b0,b1,b2,b3):
     return (b3 << 24) + (b2 << 16) + (b1 << 8) + b0
@@ -67,7 +68,9 @@ class SerialThread(threading.Thread):
         self._aout_seq = self._aout_seq % 256
 
     def run(self):
-        self.last_time = time_func() + 0.5 # give half a second to flush buffers
+        name = serial_handshake(self.device)
+        self._log.info('connected to device named %r' % name)
+
         self._qi = 0
         self._queries = collections.OrderedDict()
 
