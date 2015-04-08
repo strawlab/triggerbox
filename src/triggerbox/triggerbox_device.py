@@ -74,8 +74,12 @@ class SerialThread(threading.Thread):
         self._qi = 0
         self._queries = collections.OrderedDict()
 
+        now = time_func()
+
         self._version_check_started = False
-        self._connect_time = self._vquery_time = time_func()
+        self._connect_time = now
+        self._vquery_time = now + 1.0   #wait 1 second before first version query
+        self._last_time = self._vquery_time + 1.0   #and 1 second after version query
 
         self.raw_q, self.time_q, self.outq, self.aout_q = self.__args
 
@@ -112,31 +116,29 @@ class SerialThread(threading.Thread):
             # handle pending data
             buf = self._h(buf)
 
-            # perform any ongoing tasks
             now = time_func()
-            if (now - self.last_time) > QUERY_DT:
+
+            # perform any ongoing tasks
+            if self.version_check_done:
                 # request sample
-
-                self._queries[ self._qi ] = now
-
-                self.ser.write( 'P'+chr(self._qi) )
-
-                self._qi = (self._qi + 1) % 256
-                self.last_time = now
-
-            # version check
-            if not self.version_check_done:
+                if (now - self._last_time) > QUERY_DT:
+                    self._queries[ self._qi ] = now
+                    self.ser.write( 'P'+chr(self._qi) )
+                    self._qi = (self._qi + 1) % 256
+                    self._last_time = now
+            else:
+                # request firmware version
                 if not self._version_check_started:
                     if now >= self._vquery_time:
                         self._log.info('checking firmware version')
                         self.ser.write( 'V?' )
                         self._version_check_started = True
-                        self._vquery_time = time_func()+5.0
+                        self._vquery_time = now
                 #retry every second
                 if (now - self._vquery_time) > 1.0:
                     self._version_check_started = False
-                #give up after 10 seconds
-                if (now - self._connect_time) > 10.0:
+                #give up after 20 seconds
+                if (now - self._connect_time) > 20.0:
                     raise RuntimeError('no version response')
 
     def _handle_version(self, value, pulsenumber, count):
