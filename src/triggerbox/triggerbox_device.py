@@ -448,9 +448,16 @@ class TriggerboxDevice(threading.Thread):
         self.outq.put( ('AOut', aout0, aout1) ) # set AOUT
 
 if __name__=='__main__':
+    import sys
     import itertools
+
+    try:
+        port = sys.argv[1]
+    except IndexError:
+        port = '/dev/ttyUSB0'
+
     logging.basicConfig(level=logging.DEBUG)
-    td = TriggerboxDevice('/dev/ttyUSB0')
+    td = TriggerboxDevice(port)
     for i in itertools.cycle(range(5,200,10)):
         td.set_triggerrate(i)
         time.sleep(10)
