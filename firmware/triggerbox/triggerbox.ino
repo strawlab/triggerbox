@@ -414,7 +414,7 @@ void setup_timer1(uint8_t tccr1b, uint16_t icr1) {
 // Standard arduino setup function ---------------------------------------------
 void setup() {
     udev.begin();
-    udev.serial_handshake();   //blocks for 10 seconds by default
+    udev.serial_handshake();   //blocks for 5 seconds by default
 
     SPI.setDataMode(SPI_MODE0);
     SPI.setBitOrder(MSBFIRST);
