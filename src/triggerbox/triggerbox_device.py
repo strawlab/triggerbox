@@ -410,7 +410,7 @@ class TriggerboxDevice(threading.Thread):
             rate_actual = rate_actual_64
             prescaler = 64
 
-        self._log.info( 'desired rate %s (actual rate %s) using ICR1_AND_PRESCALER %x %d' % (rate_ideal,
+        self._log.info( 'desired rate %s (actual rate %s) using ICR1_AND_PRESCALER 0x%X %d' % (rate_ideal,
                                                                                             rate_actual,
                                                                                             new_icr1,
                                                                                             prescaler) )
