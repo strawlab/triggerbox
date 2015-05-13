@@ -2,3 +2,5 @@ python-serial:
   ubuntu: python-serial
 arduino-mk:
   ubuntu: arduino-mk
+arduino-udev:
+  ubuntu: arduino-udev

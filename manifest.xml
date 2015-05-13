@@ -13,4 +13,5 @@
 
   <rosdep name="python-serial"/>
   <rosdep name="arduino-mk"/>
+  <rosdep name="arduino-udev"/>
 </package>
