@@ -1,10 +1,37 @@
-cmake_minimum_required(VERSION 2.4.6)
-include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+cmake_minimum_required(VERSION 2.8.3)
+project(triggerbox)
 
-rosbuild_init()
 
-rosbuild_genmsg()
-rosbuild_gensrv()
+find_package(catkin REQUIRED COMPONENTS message_generation)
 
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+add_message_files(
+    FILES
+    AOutConfirm.msg
+    AOutRaw.msg
+    AOutVolts.msg
+    TriggerClockMeasurement.msg
+    TriggerClockModel.msg
+)
+
+add_service_files(
+    FILES
+    SetFramerate.srv
+)
+
+catkin_python_setup()
+
+generate_messages()
+
+catkin_package(CATKIN_DEPENDS message_generation message_runtime)
+
+catkin_install_python(
+    PROGRAMS
+    nodes/triggerbox_client
+    nodes/triggerbox_host
+    scripts/set-framerate
+    DESTINATION
+    ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+
+
