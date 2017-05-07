@@ -37,17 +37,18 @@ class TriggerboxHost(TriggerboxDevice, TriggerboxAPI):
 
         self.pub_time = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'time_model'),
-                                TriggerClockModel)
+                                TriggerClockModel, queue_size=1)
         self.pub_rate = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'expected_framerate'),
                                 std_msgs.msg.Float32,
+                                queue_size=1,
                                 latch=True)
         self.pub_raw = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'raw_measurements'),
-                                TriggerClockMeasurement)
+                                TriggerClockMeasurement, queue_size=1)
         self.pub_aout_confirm = rospy.Publisher(
                                 _make_ros_topic(ros_topic_base,'aout_confirm'),
-                                AOutConfirm)
+                                AOutConfirm, queue_size=1)
 
         super(TriggerboxHost,self).__init__(device)
 
