@@ -28,19 +28,23 @@ class TriggerboxClient(TriggerboxAPI):
         self.fps_pub = rospy.Publisher(
                          host_node+'/set_triggerrate',
                          std_msgs.msg.Float32,
+                         queue_size=100,
                          latch=True)
         self.sync_pub = rospy.Publisher(
                          host_node+'/pause_and_reset',
                          std_msgs.msg.Float32,
+                         queue_size=100,
                          latch=True)
 
         self.aout_volts_pub = rospy.Publisher(
                          host_node+'/aout_volts',
                          AOutVolts,
+                         queue_size=100,
                          latch=True)
         self.aout_raw_pub = rospy.Publisher(
                          host_node+'/aout_raw',
                          AOutRaw,
+                         queue_size=100,
                          latch=True)
 
         self._fps_srv_url = host_node+'/set_framerate'
