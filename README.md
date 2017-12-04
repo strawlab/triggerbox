@@ -13,8 +13,8 @@ The file `triggerbox.ino` in the folder `firmware/triggerbox` can be opened
 directly in the [Arduino IDE](http://arduino.cc/en/main/software).
 
 ### Command-line compilation
-    
-To build this firmware for an Arduino Uno board on Ubuntu linux, do
+
+To build this firmware for an Arduino Nano or Arduino Uno board on Ubuntu linux, do
 the following steps.
 
 Install the required software:
@@ -23,7 +23,8 @@ Install the required software:
 
 Make the firmware and upload it onto your Arduino device:
 
-    make upload
+    make -f Makefile.nano upload # <- Do this for Arduino Nano
+    make -f Makefile.uno upload # <- Do this for Arduino Uno
 
 ## Device setup
 
