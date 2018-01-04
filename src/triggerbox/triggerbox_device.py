@@ -161,7 +161,7 @@ class SerialThread(threading.Thread):
             return
 
         max_error = now-send_timestamp
-        if max_error > 0.015: # 15 msec cutoff
+        if max_error > 0.020: # 20 msec cutoff
             self._log.warn(
                 'clock sample took %.1f msec. Ignoring value.'%( max_error*1e3))
             return
