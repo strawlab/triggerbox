@@ -21,10 +21,19 @@ Install the required software:
 
     sudo apt-get install arduino-mk
 
-Make the firmware and upload it onto your Arduino device:
+Make the firmware and upload it onto your Arduino device. With Arduino Nano:
 
-    make -f Makefile.nano upload # <- Do this for Arduino Nano
-    make -f Makefile.uno upload # <- Do this for Arduino Uno
+    # Do this if you are using an Arduino Nano
+    cd firmware/triggerbox
+    ln -s Makefile.nano Makefile
+    make upload
+
+With Arduino Uno:
+
+    # Do this if you are using an Arduino Uno
+    cd firmware/triggerbox
+    ln -s Makefile.uno Makefile
+    make upload
 
 ## Device setup
 
