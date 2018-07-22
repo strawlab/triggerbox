@@ -142,7 +142,7 @@ class SerialThread(threading.Thread):
                     raise RuntimeError('no version response')
 
     def _handle_version(self, value, pulsenumber, count):
-        assert value==13
+        assert value==14
         self._vquery_time = time_func()
         self.version_check_done = value
         self._log.info('connected to triggerbox firmware version %d' % value )

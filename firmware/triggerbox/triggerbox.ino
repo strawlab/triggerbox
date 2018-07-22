@@ -516,7 +516,7 @@ void loop() {
             // version request
             static struct timed_sample version_request;
 
-            version_request.value = 13;
+            version_request.value = 14;
 
             uint8_t SaveSREG_ = SREG;   // save interrupt flag
             cli(); // disable interrupts
@@ -535,6 +535,7 @@ void loop() {
             if (value=='0') {
                 // stop clock, reset pulsenumber
                 TCCR1B = 0x18;
+                TCNT1 = 0;
                 pulsenumber = 0;
                 digitalWrite(LEDPin, HIGH);
             } else if (value=='1') {
