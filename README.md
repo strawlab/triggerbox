@@ -19,6 +19,8 @@ the following steps.
 
 Install the required software:
 
+    curl -O http://debs.strawlab.org/xenial/arduino-udev_0.2.3-0ads1_all.deb
+    sudo apt install ./arduino-udev_0.2.3-0ads1_all.deb
     sudo apt-get install arduino-mk
 
 Make the firmware and upload it onto your Arduino device. With Arduino Nano:
