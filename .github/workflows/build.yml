@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build-firmware:
+    # Based on https://legion2.github.io/2020/03/27/from-arduino-builder-to-arduino-cli.html
+    # and https://blog.arduino.cc/2019/11/14/arduino-on-github-actions/
+    strategy:
+      matrix:
+        runs-on: [ubuntu-20.04, windows-2019, macos-10.15]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@master
+      - uses: arduino/setup-arduino-cli@v1.1.1
+      - name: Install platform
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+      - name: Compile Sketch
+        run: arduino-cli compile --fqbn arduino:avr:nano  --output-dir triggerbox-firmware ./firmware/triggerbox/triggerbox
+      # TODO: also include the source code because it seems easier flash Arduino
+      # firmware from source. Unfortunately flashing a .hex file seems rather
+      # painful https://forum.arduino.cc/index.php?topic=417659.0 .
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: triggerbox-firmware
+          path: triggerbox-firmware\triggerbox.ino.hex
