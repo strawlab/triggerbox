@@ -2,6 +2,10 @@
 
 camera triggering with clock synchronization to host PCs
 
+Required hardware:
+
+Arduino Nano A000005 (later models WILL NOT WORK).
+
 ## firmware build and install
 
 This firmware can be compiled and installed with the Arduino IDE or at
@@ -14,8 +18,8 @@ directly in the [Arduino IDE](http://arduino.cc/en/main/software).
 
 ### Command-line compilation
 
-To build this firmware for an Arduino Nano or Arduino Uno board on Ubuntu linux, do
-the following steps.
+To build this firmware for an Arduino Nano on Ubuntu linux, do the following
+steps.
 
 Install the required software:
 
@@ -27,14 +31,6 @@ Make the firmware and upload it onto your Arduino device. With Arduino Nano:
 
     # Do this if you are using an Arduino Nano
     cd firmware/triggerbox
-    ln -s Makefile.nano Makefile
-    make upload
-
-With Arduino Uno:
-
-    # Do this if you are using an Arduino Uno
-    cd firmware/triggerbox
-    ln -s Makefile.uno Makefile
     make upload
 
 ## Device setup
@@ -42,9 +38,6 @@ With Arduino Uno:
 After building and uploading firmware to the device, its name must be saved
 to it with the [arduino-udev](https://github.com/strawlab/arduino-udev)
 package.
-
-In the below, replace `/dev/ttyUSB0` with `/dev/ttyACM0` if needed. This is
-needed with Arduino Uno hardware, for example.
 
 Unplug and replug the triggerbox, then run this to flash the EEPROM on the
 device with its new name (which will be `trig1`):
