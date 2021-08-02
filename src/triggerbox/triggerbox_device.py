@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 import serial
 import numpy as np
-import os, sys, time, threading, Queue, collections
+import os, sys, time, threading, collections
+try:
+    # python 3
+    import queue
+except:
+    import Queue as queue
 import struct
 import argparse
 import logging
@@ -45,16 +50,19 @@ class SerialThread(threading.Thread):
         icr1, prescaler = new_value
         chars = struct.pack('<H',icr1) # little-endian unsigned short
         assert len(chars)==2
-        vals = [ord(c) for c in chars]
+        vals = [byte_to_int(c) for c in chars]
+        chars = []
         self.ICR1_AND_PRESCALER = ((vals[1] << 8) + vals[0], prescaler)
         assert self.ICR1_AND_PRESCALER==new_value
         if prescaler==8:
-            chars += '1'
+            chars.append(b'1')
         elif prescaler==64:
-            chars += '2'
+            chars.append(b'2')
         else:
             raise ValueError('unsupported prescaler: %s'%prescaler)
-        self.ser.write('T='+chars)
+        self.ser.write(b'T=')
+        for char in chars:
+            self.ser.write(char)
 
     def _set_AOUT( self, aout0, aout1 ):
         aout0_chars = struct.pack('<H', aout0) # little-endian unsigned short
@@ -62,7 +70,7 @@ class SerialThread(threading.Thread):
         aout1_chars = struct.pack('<H', aout1) # little-endian unsigned short
         assert len(aout1_chars)==2
         chars = aout0_chars + aout1_chars + chr(self._aout_seq)
-        self.ser.write('O='+chars)
+        self.ser.write(b'O='+chars)
         self._last_aout_sequence = self._aout_seq, aout0, aout1
         self._aout_seq += 1
         self._aout_seq = self._aout_seq % 256
@@ -87,7 +95,7 @@ class SerialThread(threading.Thread):
                                  timeout=0.01,
                                  baudrate=115200)
 
-        buf = ''
+        buf = b''
         while 1:
 
             # handle new commands
@@ -99,15 +107,15 @@ class SerialThread(threading.Thread):
                         new_value = cmd_tup[1]
                         self._set_ICR1_AND_PRESCALER( new_value )
                     elif cmd=='stop_pulses_and_reset':
-                        self.ser.write('S0')
+                        self.ser.write(b'S0')
                     elif cmd=='start_pulses':
-                        self.ser.write('S1')
+                        self.ser.write(b'S1')
                     elif cmd=='stop_pulses':
-                        self.ser.write('S2')
+                        self.ser.write(b'S2')
                     elif cmd=='AOut':
                         aout0, aout1 = cmd_tup[1:3]
                         self._set_AOUT( aout0, aout1 )
-                except Queue.Empty:
+                except queue.Empty:
                     break
 
             # get all pending data
@@ -123,7 +131,13 @@ class SerialThread(threading.Thread):
                 # request sample
                 if (now - self._last_time) > QUERY_DT:
                     self._queries[ self._qi ] = now
-                    self.ser.write( 'P'+chr(self._qi) )
+                    self.ser.write( b'P' )
+                    try:
+                        # Python 3
+                        self.ser.write( self._qi )
+                    except:
+                        # Python 2
+                        self.ser.write( 'P'+chr(self._qi) )
                     self._qi = (self._qi + 1) % 256
                     self._last_time = now
             else:
@@ -131,7 +145,7 @@ class SerialThread(threading.Thread):
                 if not self._version_check_started:
                     if now >= self._vquery_time:
                         self._log.info('checking firmware version')
-                        self.ser.write( 'V?' )
+                        self.ser.write( b'V?' )
                         self._version_check_started = True
                         self._vquery_time = now
                 #retry every second
@@ -152,7 +166,7 @@ class SerialThread(threading.Thread):
 
         while len(self._queries) > 50:
             old_qi = self._queries.popitem(last=False)
-            self._log.warn('never got return for query %d'%old_qi)
+            self._log.warn('never got return for query %r'%(old_qi,))
 
         try:
             send_timestamp = self._queries.pop( qi )
@@ -203,14 +217,14 @@ class SerialThread(threading.Thread):
             valid = False
 
             packet_type = buf[0]
-            payload_len = ord(buf[1])
+            payload_len = byte_to_int(buf[1])
 
             min_valid_packet_size = 3+payload_len  # header (2) + payload + checksum (1)
             if len(buf) >= min_valid_packet_size:
-                expected_chksum = ord(buf[2+payload_len])
+                expected_chksum = byte_to_int(buf[2+payload_len])
 
                 check_buf = buf[2:-1]
-                bytes = [ord(char) for char in check_buf]
+                bytes = [byte_to_int(char) for char in check_buf]
                 actual_chksum = sum( bytes ) % 256
 
                 if actual_chksum == expected_chksum:
@@ -219,7 +233,7 @@ class SerialThread(threading.Thread):
                 else:
                     raise RuntimeError('checksum mismatch')
 
-                if packet_type in ('P','V','O'):
+                if packet_type in (b'P'[0], b'V'[0], b'O'[0]):
                     assert payload_len==7
                     value = bytes[0]
                     e0,e1,e2,e3 = bytes[1:5]
@@ -228,19 +242,27 @@ class SerialThread(threading.Thread):
                     pulsenumber = uint32(e0,e1,e2,e3)
                     count = uint16(t0,t1)
 
-                    if packet_type == 'P':
+                    if packet_type == b'P'[0]:
                         self._handle_returned_timestamp(value, pulsenumber, count )
-                    elif packet_type == 'V':
+                    elif packet_type == b'V'[0]:
                         self._handle_version(value, pulsenumber, count )
-                    elif packet_type == 'O':
+                    elif packet_type == b'O'[0]:
                         self._handle_returned_aout(value, pulsenumber, count )
                 else:
-                    raise ValueError('unknown packet type')
+                    raise ValueError('unknown packet type %r'%(packet_type,))
 
             if valid:
                 result = buf[n_used_chars:]
 
         return result
+
+def byte_to_int(byte):
+    try:
+        # Python 3
+        return byte-0
+    except TypeError as err:
+        # Python 2
+        return ord(byte)
 
 def volts_to_dac(volts):
     v = np.clip(volts,LOW_VOLTS,HIGH_VOLTS)
@@ -264,10 +286,10 @@ class TriggerboxDevice(threading.Thread):
         self._connected = False
         self._log = logging.getLogger("trigger.device")
 
-        self.raw_q = Queue.Queue()
-        self.time_q = Queue.Queue()
-        self.outq = Queue.Queue()
-        self.aout_q = Queue.Queue()
+        self.raw_q = queue.Queue()
+        self.time_q = queue.Queue()
+        self.outq = queue.Queue()
+        self.aout_q = queue.Queue()
         aout_sender_thread = threading.Thread( target=queue_to_func,
                                                args=(self.aout_q,
                                                      self._notify_aout_confirm),
@@ -322,7 +344,7 @@ class TriggerboxDevice(threading.Thread):
             try:
                 raw = self.raw_q.get_nowait()
                 self._notify_clock_measurement(*raw)
-            except Queue.Empty:
+            except queue.Empty:
                 break
 
         new_time = False
@@ -330,7 +352,7 @@ class TriggerboxDevice(threading.Thread):
             try:
                 self.times.append( self.time_q.get_nowait() )
                 new_time = True
-            except Queue.Empty:
+            except queue.Empty:
                 break
 
         if new_time and len(self.times) > 3:
@@ -338,7 +360,7 @@ class TriggerboxDevice(threading.Thread):
             tdata = np.array(self.times[-100:])
             try:
                 self.time_model = get_time_model(tdata[:,1], tdata[:,0], max_residual=0.1)
-            except TimeFitError, err:
+            except TimeFitError as err:
                 self._log.warn('error fitting time_model: %s'%err)
             else:
                 self._notify_clockmodel(self.time_model.gain, self.time_model.offset)
@@ -461,4 +483,3 @@ if __name__=='__main__':
     for i in itertools.cycle(range(5,200,10)):
         td.set_triggerrate(i)
         time.sleep(10)
-
