@@ -22,12 +22,4 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install arduino:avr
       - name: Compile Sketch
-        run: arduino-cli compile --fqbn arduino:avr:nano  --output-dir triggerbox-firmware ./firmware/triggerbox/triggerbox
-      # TODO: also include the source code because it seems easier flash Arduino
-      # firmware from source. Unfortunately flashing a .hex file seems rather
-      # painful https://forum.arduino.cc/index.php?topic=417659.0 .
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: triggerbox-firmware
-          path: triggerbox-firmware\triggerbox.ino.hex
+        run: arduino-cli compile --fqbn arduino:avr:nano ./firmware/triggerbox/triggerbox
