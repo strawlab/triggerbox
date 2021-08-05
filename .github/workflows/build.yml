@@ -22,4 +22,4 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install arduino:avr
       - name: Compile Sketch
-        run: arduino-cli compile --fqbn arduino:avr:nano ./firmware/triggerbox/triggerbox
+        run: arduino-cli compile --fqbn arduino:avr:nano

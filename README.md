@@ -6,66 +6,36 @@ Required hardware:
 
 Arduino Nano A000005 (later models WILL NOT WORK).
 
-## firmware build and install
+## Firmware Build and Install
 
 This firmware can be compiled and installed with the Arduino IDE or at
 the command line.
 
-### Arduino IDE compilation
+### Option 1: Compiling and Uploading using the Arduino IDE
 
-The file `triggerbox.ino` in the folder `firmware/triggerbox` can be opened
-directly in the [Arduino IDE](http://arduino.cc/en/main/software).
+The file `triggerbox.ino` can be opened directly in the [Arduino
+IDE](http://arduino.cc/en/main/software). Set your board to Arduino Nano
+("Tools"->"Board"->"Arduino Nano"). Set your port ("Tools"->"Port") correctly,
+which depends on your specific computer setup. Then click the "Upload" button.
 
-### Command-line compilation
+### Option 2: Command-line Compiling and Uploading using Arduino CLI
 
 To build this firmware for an Arduino Nano on Ubuntu linux, do the following
 steps.
 
 Install the required software:
 
-    curl -O http://debs.strawlab.org/xenial/arduino-udev_0.2.3-0ads1_all.deb
-    sudo apt install ./arduino-udev_0.2.3-0ads1_all.deb
-    sudo apt-get install arduino-mk
+Intall [Arduino CLI](https://arduino.github.io/arduino-cli/latest/), then:
 
-Make the firmware and upload it onto your Arduino device. With Arduino Nano:
+    arduino-cli core update-index
+    arduino-cli core install arduino:avr
 
-    # Do this if you are using an Arduino Nano
-    cd firmware/triggerbox
-    make upload
+Compile the firmware
 
-## Device setup
+    arduino-cli compile --fqbn arduino:avr:nano
 
-After building and uploading firmware to the device, its name must be saved
-to it with the [arduino-udev](https://github.com/strawlab/arduino-udev)
-package.
+Upload the firmware
 
-Unplug and replug the triggerbox, then run this to flash the EEPROM on the
-device with its new name (which will be `trig1`):
-
-    arduino-udev-name --set-name trig1 --verbose /dev/ttyUSB0
-
-Now, run the udev rules to make a symlink to the device at `/dev/trig1`:
-
-    udevadm control --reload-rules
-    udevadm trigger --attr-match=subsystem=tty
-    ls /dev/trig1
-
-## Troubleshooting
-
-If your device is at `/dev/ttyACM0`, the `modemmanager` package may interfere
-with its normal operation. Therefore, ensure you do not have modemmanager
-installed:
-
-    apt-get remove modemmanager
-
-If the commands above in device setup suceeded but there is no device at
-`/dev/trig1`, check the output of:
-
-    arduino-udev-name /dev/ttyUSB0
-
-If the output is `trig1`, this means the `--set-name` command above succeeded.
-However, since there is no device at `/dev/trig1`, this means the udev rules
-from the `arduino-udev` package are not working as expected. In this case, check
-the output of `lsusb` for the VendorID and ProductID of your trigger device and
-ensure they are in the udev rules file from the `arduino-udev` package. (The
-rules file is typically installed at `/lib/udev/rules.d/99-arduino-udev.rules`.)
+    # Note the port `/dev/ttyUSB0` may be different on your computer. In Windows,
+    # it will be something like `COM4`.
+    arduino-cli upload --port /dev/ttyUSB0 --fqbn arduino:avr:nano
