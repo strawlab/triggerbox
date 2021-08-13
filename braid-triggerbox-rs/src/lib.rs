@@ -34,7 +34,7 @@ pub fn to_name_type(x: &str) -> anyhow::Result<InnerNameType> {
     if bytes.len() > DEVICE_NAME_LEN {
         anyhow::bail!("Maximum name length ({} chars) exceeded.", DEVICE_NAME_LEN);
     }
-    (&mut name[..bytes.len()]).copy_from_slice(&bytes);
+    (&mut name[..bytes.len()]).copy_from_slice(bytes);
     Ok(name)
 }
 
@@ -129,7 +129,7 @@ impl SerialThread {
             qi: 0,
             queries: BTreeMap::new(),
             ser: None,
-            outq: outq,
+            outq,
             vquery_time, // wait 1 second before first version query
             last_time: vquery_time + Duration::seconds(1), // and 1 second after version query
             past_data: Vec::new(),
@@ -164,16 +164,14 @@ impl SerialThread {
         let (mut ser, name) =
             serial_handshake(&self.device).context(format!("opening device {}", self.device))?;
 
-        if assert_device_name.is_some() {
-            if name != assert_device_name {
-                anyhow::bail!(
-                    "Found name {}, but expected {}. ({:?} vs {:?}.)",
-                    name_display(&name),
-                    name_display(&assert_device_name),
-                    name,
-                    assert_device_name,
-                );
-            }
+        if assert_device_name.is_some() && name != assert_device_name {
+            anyhow::bail!(
+                "Found name {}, but expected {}. ({:?} vs {:?}.)",
+                name_display(&name),
+                name_display(&assert_device_name),
+                name,
+                assert_device_name,
+            );
         }
 
         // Not sure if it is OK to bump up baud rate in mid communication.
@@ -187,7 +185,7 @@ impl SerialThread {
         }
         let mut now = chrono::Utc::now();
 
-        let connect_time = now.clone();
+        let connect_time = now;
 
         let mut buf: Vec<u8> = Vec::new();
         let mut read_buf: Vec<u8> = vec![0; 100];
@@ -225,7 +223,7 @@ impl SerialThread {
 
                                     self.write(b"N=")?;
                                     self.write(&name)?;
-                                    self.write(&computed_crc.as_bytes())?;
+                                    self.write(computed_crc.as_bytes())?;
                                 }
                                 Cmd::SetAOut((volts1, volts2)) => {
                                     fn volts_to_dac(volts: f64) -> u16 {
@@ -304,20 +302,18 @@ impl SerialThread {
                     // request sample
                     debug!("making clock sample request. qi: {}, now: {}", self.qi, now);
                     self.queries.insert(self.qi, now);
-                    let send_buf = ['P' as u8, self.qi];
+                    let send_buf = [b'P', self.qi];
                     self.write(&send_buf)?;
                     self.qi = self.qi.wrapping_add(1);
                     self.last_time = now;
                 }
             } else {
                 // request firmware version
-                if !version_check_started {
-                    if now >= self.vquery_time {
-                        info!("checking firmware version");
-                        self.write(b"V?")?;
-                        version_check_started = true;
-                        self.vquery_time = now;
-                    }
+                if !version_check_started && now >= self.vquery_time {
+                    info!("checking firmware version");
+                    self.write(b"V?")?;
+                    version_check_started = true;
+                    self.vquery_time = now;
                 }
 
                 // retry every second
@@ -340,8 +336,8 @@ impl SerialThread {
         let mut buf = [0, 0, 0];
         LittleEndian::write_u16(&mut buf[0..2], new_value.icr1);
         buf[2] = match &new_value.prescaler {
-            Prescaler::Scale8 => '1' as u8,
-            Prescaler::Scale64 => '2' as u8,
+            Prescaler::Scale8 => b'1',
+            Prescaler::Scale64 => b'2',
         };
 
         self.icr1_and_prescaler = Some(new_value);

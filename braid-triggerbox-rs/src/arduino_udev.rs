@@ -25,7 +25,7 @@ fn _crc8maxim(mut crc: u8, c: &u8) -> u8 {
         if (crc & 0x01) > 0 {
             crc = (crc >> 1) ^ 0x8C;
         } else {
-            crc = crc >> 1;
+            crc >>= 1;
         }
     }
     crc
@@ -72,9 +72,9 @@ fn get_device_name(
 
     let computed_crc = format!("{:X}", crc8maxim(name));
     trace!("computed CRC: {:?}", computed_crc);
-    if &computed_crc == expected_crc {
+    if computed_crc == expected_crc {
         let mut result = [0; DEVICE_NAME_LEN];
-        result[..DEVICE_NAME_LEN].copy_from_slice(&name);
+        result[..DEVICE_NAME_LEN].copy_from_slice(name);
         Ok(Some(result))
     } else {
         Err(UdevError::CrcFail)
