@@ -3,6 +3,8 @@ name = "braid-triggerbox"
 version = "0.1.0"
 authors = ["Andrew Straw <strawman@astraw.com>"]
 edition = "2018"
+license = "MIT/Apache-2.0"
+description = "camera synchronization trigger box for Braid"
 
 [dependencies]
 thiserror = "1"

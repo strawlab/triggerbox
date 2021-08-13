@@ -59,3 +59,7 @@ Upload the firmware
     # Note the port `/dev/ttyUSB0` may be different on your computer. In Windows,
     # it will be something like `COM4`.
     arduino-cli upload --port /dev/ttyUSB0 --fqbn arduino:avr:nano
+
+## License
+
+Apache 2.0 or MIT at your choice. See `LICENSE-APACHE` and `LICENSE-MIT`.
