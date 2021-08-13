@@ -68,7 +68,7 @@ pub struct TriggerClockInfoRow {
 // ------ serial thread type
 
 struct SerialThread {
-    device: std::path::PathBuf,
+    device: String,
     icr1_and_prescaler: Option<Icr1AndPrescaler>,
     version_check_done: bool,
     qi: u8,
@@ -115,7 +115,7 @@ pub enum Cmd {
 
 impl SerialThread {
     fn new(
-        device: std::path::PathBuf,
+        device: String,
         outq: Receiver<Cmd>,
         callback: Box<dyn FnMut(Option<ClockModel>)>,
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
@@ -161,8 +161,8 @@ impl SerialThread {
         let query_dt = Duration::from_std(query_dt)?;
 
         // wtf - what is this doing if we only open port below?
-        let (mut ser, name) = serial_handshake(&self.device)
-            .context(format!("opening device {}", self.device.display()))?;
+        let (mut ser, name) =
+            serial_handshake(&self.device).context(format!("opening device {}", self.device))?;
 
         if assert_device_name.is_some() {
             if name != assert_device_name {
@@ -516,7 +516,7 @@ impl SerialThread {
 
 pub fn launch_background_thread(
     callback: Box<dyn FnMut(Option<ClockModel>) + Send>,
-    device: std::path::PathBuf,
+    device: String,
     cmd: Receiver<Cmd>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     query_dt: std::time::Duration,

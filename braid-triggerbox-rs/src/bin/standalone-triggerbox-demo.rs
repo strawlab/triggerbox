@@ -19,8 +19,8 @@ const DEFAULT_DEVICE_PATH: &str = r#"COM3"#;
 #[structopt(name = "standalone-triggerbox-demo")]
 struct Opt {
     /// Filename of device
-    #[structopt(parse(from_os_str), long = "device", default_value = DEFAULT_DEVICE_PATH)]
-    device: std::path::PathBuf,
+    #[structopt(long = "device", default_value = DEFAULT_DEVICE_PATH)]
+    device: String,
     /// Framerate
     #[structopt(long = "fps", default_value = "100")]
     fps: f64,

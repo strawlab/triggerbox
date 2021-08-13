@@ -9,7 +9,7 @@ description = "camera synchronization trigger box for Braid"
 [dependencies]
 thiserror = "1"
 anyhow = "1.0"
-serialport = "3"
+serialport = "4"
 log = "0.4"
 byteorder = "1"
 thread-control = "0.1"

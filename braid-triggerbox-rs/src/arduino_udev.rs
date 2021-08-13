@@ -81,22 +81,11 @@ fn get_device_name(
     }
 }
 
-pub fn serial_handshake(
-    port: &std::path::Path,
-) -> Result<(Box<dyn serialport::SerialPort>, NameType)> {
-    use serialport::*;
-
-    let settings = SerialPortSettings {
-        baud_rate: 9600,
-        data_bits: DataBits::Eight,
-        flow_control: FlowControl::None,
-        parity: Parity::None,
-        stop_bits: StopBits::One,
-        timeout: std::time::Duration::from_millis(500),
-    };
-
-    let mut ser = serialport::open_with_settings(port, &settings)?;
-    debug!("Resetting port {}", port.display());
+pub fn serial_handshake(port: &str) -> Result<(Box<dyn serialport::SerialPort>, NameType)> {
+    let mut ser = serialport::new(port, 9600)
+        .timeout(std::time::Duration::from_millis(500))
+        .open()?;
+    debug!("Resetting port {}", port);
     reset_device(&mut ser)?;
     std::thread::sleep(std::time::Duration::from_millis(2_500));
     debug!("Flushing serial port");
