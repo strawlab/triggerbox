@@ -1,0 +1,23 @@
+name: Cargo Test
+# Trigger the workflow on push or pull request
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: braid-triggerbox-rs
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install update apt repos
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run fmt
+        run: cargo fmt -- --check
+      - name: Run clippy
+        run: cargo clippy -- --deny=warnings
+      - name: Run test
+        run: cargo test
