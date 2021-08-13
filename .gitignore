@@ -1,6 +1,2 @@
-build
-msg_gen
-srv_gen
-src/triggerbox/msg
-src/triggerbox/srv
-*.pyc
+Cargo.lock
+target
