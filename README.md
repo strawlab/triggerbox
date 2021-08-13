@@ -60,6 +60,16 @@ Upload the firmware
     # it will be something like `COM4`.
     arduino-cli upload --port /dev/ttyUSB0 --fqbn arduino:avr:nano
 
+## Testing with host PC
+
+Run the standalone demo program on your host PC. First, install
+[rust](https://rustup.rs/), then:
+
+    cd braid-triggerbox-rs
+    # You may need to change the device path from `/dev/ttyUSB0` in this example.
+    # On Windows, this will be something like `COM4` instead of `/dev/ttyUSB0`.
+    cargo run -- --device /dev/ttyUSB0 --fps 100
+
 ## License
 
 Apache 2.0 or MIT at your choice. See `LICENSE-APACHE` and `LICENSE-MIT`.
