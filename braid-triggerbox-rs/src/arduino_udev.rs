@@ -51,7 +51,7 @@ fn get_device_name(
     device: &mut Box<dyn serialport::SerialPort>,
 ) -> std::result::Result<NameType, UdevError> {
     use std::io::{Read, Write};
-    device.write(b"N?")?;
+    device.write_all(b"N?")?;
 
     let alloc_len = DEVICE_NAME_LEN + 2;
 

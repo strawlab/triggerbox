@@ -145,7 +145,7 @@ impl SerialThread {
             for byte in buf.iter() {
                 trace!("sending byte: {}", byte);
             }
-            ser.write(buf)?;
+            ser.write_all(buf)?;
         } else {
             panic!("serial device null")
         }
