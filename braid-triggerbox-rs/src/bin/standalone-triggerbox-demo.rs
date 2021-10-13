@@ -48,7 +48,9 @@ fn main() -> anyhow::Result<()> {
     let (tx, rx) = crossbeam_channel::unbounded();
 
     tx.send(Cmd::StopPulsesAndReset)?;
-    tx.send(make_trig_fps_cmd(opt.fps))?;
+    let (rate_cmd, rate_actual) = make_trig_fps_cmd(opt.fps);
+    println!("Requested {} fps, using {} fps", opt.fps, rate_actual);
+    tx.send(rate_cmd)?;
     if let Some(set_device_name) = opt.set_device_name {
         let actual_name = to_name_type(&set_device_name)?;
         println!("Setting name to {}", name_display(&Some(actual_name)));

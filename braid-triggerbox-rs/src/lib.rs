@@ -592,18 +592,26 @@ fn get_rate(rate_ideal: f64, prescaler: Prescaler) -> (u16, f64) {
     (new_icr1, rate_actual)
 }
 
-pub fn make_trig_fps_cmd(rate_ideal: f64) -> Cmd {
+/// Given an ideal frame rate (in frames per second), compute the triggerbox
+/// command which best approximates this frame rate.
+///
+/// Returns the triggerbox command and the expected actual frame rate (in frames
+/// per second).
+pub fn make_trig_fps_cmd(rate_ideal: f64) -> (Cmd, f64) {
     let (icr1_8, rate_actual_8) = get_rate(rate_ideal, Prescaler::Scale8);
     let (icr1_64, rate_actual_64) = get_rate(rate_ideal, Prescaler::Scale64);
 
     let error_8 = (rate_ideal - rate_actual_8).abs();
     let error_64 = (rate_ideal - rate_actual_64).abs();
 
-    let (icr1, _rate_actual, prescaler) = if error_8 < error_64 {
+    let (icr1, rate_actual, prescaler) = if error_8 < error_64 {
         (icr1_8, rate_actual_8, Prescaler::Scale8)
     } else {
         (icr1_64, rate_actual_64, Prescaler::Scale64)
     };
 
-    Cmd::Icr1AndPrescaler(Icr1AndPrescaler { icr1, prescaler })
+    (
+        Cmd::Icr1AndPrescaler(Icr1AndPrescaler { icr1, prescaler }),
+        rate_actual,
+    )
 }
