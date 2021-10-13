@@ -81,6 +81,7 @@ struct SerialThread {
     allow_requesting_clock_sync: bool,
     callback: Box<dyn FnMut(Option<ClockModel>)>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
+    max_acceptable_measurement_error: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +120,7 @@ impl SerialThread {
         outq: Receiver<Cmd>,
         callback: Box<dyn FnMut(Option<ClockModel>)>,
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
+        max_acceptable_measurement_error: Duration,
     ) -> Result<Self> {
         let now = chrono::Utc::now();
         let vquery_time = now + Duration::seconds(1);
@@ -136,6 +138,7 @@ impl SerialThread {
             allow_requesting_clock_sync: false,
             callback,
             triggerbox_data_tx,
+            max_acceptable_measurement_error,
         })
     }
 
@@ -368,8 +371,8 @@ impl SerialThread {
         trace!("this query has send_timestamp: {}", send_timestamp);
 
         let max_error = now.signed_duration_since(send_timestamp);
-        if max_error > Duration::milliseconds(20) {
-            warn!("clock sample took {:?}. Ignoring value.", max_error);
+        if max_error > self.max_acceptable_measurement_error {
+            debug!("clock sample took {:?}. Ignoring value.", max_error);
             return Ok(());
         }
 
@@ -538,14 +541,20 @@ pub fn launch_background_thread(
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     query_dt: std::time::Duration,
     assert_device_name: NameType,
+    max_acceptable_measurement_error: std::time::Duration,
 ) -> Result<(thread_control::Control, std::thread::JoinHandle<()>)> {
     let triggerbox_thread_builder =
         std::thread::Builder::new().name("triggerbox_comms".to_string());
     let (flag, control) = thread_control::make_pair();
     let triggerbox_thread_handle = triggerbox_thread_builder.spawn(move || {
         run_func(|| {
-            let mut triggerbox =
-                SerialThread::new(device, /*raw_tx,*/ cmd, callback, triggerbox_data_tx)?;
+            let mut triggerbox = SerialThread::new(
+                device,
+                /*raw_tx,*/ cmd,
+                callback,
+                triggerbox_data_tx,
+                Duration::from_std(max_acceptable_measurement_error)?,
+            )?;
             triggerbox.run(flag, query_dt, assert_device_name)
         });
     })?;

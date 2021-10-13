@@ -72,9 +72,17 @@ fn main() -> anyhow::Result<()> {
     });
 
     let query_dt = std::time::Duration::from_secs(1);
+    let max_acceptable_measurement_error = std::time::Duration::from_millis(6);
 
-    let (control, _handle) =
-        launch_background_thread(cb, opt.device, rx, None, query_dt, assert_device_name)?;
+    let (control, _handle) = launch_background_thread(
+        cb,
+        opt.device,
+        rx,
+        None,
+        query_dt,
+        assert_device_name,
+        max_acceptable_measurement_error,
+    )?;
 
     println!("Connecting to trigger device ..");
     while !tx.is_empty() {
