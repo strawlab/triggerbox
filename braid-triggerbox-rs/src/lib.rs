@@ -378,7 +378,7 @@ impl SerialThread {
 
         trace!("max_error: {:?}", max_error);
 
-        let ino_time_estimate = now + (max_error / 2);
+        let ino_time_estimate = send_timestamp + (max_error / 2);
 
         match &self.icr1_and_prescaler {
             Some(s) => {
