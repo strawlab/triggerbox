@@ -24,7 +24,9 @@ inputs of your camera directly.
 For additional robustness for multi-camera setups, particularly those that have
 an opto-coupled trigger input which accordingly draws substantially more
 current, you will want a buffer amplifier to trigger more cameras. In the
-`circuit_board` directory is the schematic of such a circuit.
+`hardware_v1` and `hardware_v2` directories are the PCB layouts, schematics, and enclosure of the triggerbox.
+- Hardware_v1: BNC outputs for triggering only
+- Hardware_v2: 4-pin terminal block ouputs for triggering and powering the cameras via external powersource.
 
 ## Firmware Build and Install
 
