@@ -1,9 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use braid_triggerbox::{
-    launch_background_thread, make_trig_fps_cmd, name_display, to_name_type, Cmd,
-};
+use braid_triggerbox::{make_trig_fps_cmd, name_display, to_name_type, Cmd};
 use structopt::StructOpt;
 
 #[cfg(target_os = "macos")]
@@ -36,6 +34,9 @@ struct Opt {
     /// Set device name. Sets flash storage on the device to store this name.
     #[structopt(long = "set-device-name")]
     set_device_name: Option<String>,
+    /// Maximum acceptable measurement error (in milliseconds)
+    #[structopt(long = "max-time-error-msec", default_value = "6")]
+    max_acceptable_measurement_error: u64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -74,9 +75,10 @@ fn main() -> anyhow::Result<()> {
     });
 
     let query_dt = std::time::Duration::from_secs(1);
-    let max_acceptable_measurement_error = std::time::Duration::from_millis(6);
+    let max_acceptable_measurement_error =
+        std::time::Duration::from_millis(opt.max_acceptable_measurement_error);
 
-    let (control, _handle) = launch_background_thread(
+    let (control, _handle) = braid_triggerbox::launch_background_thread(
         cb,
         opt.device,
         rx,
