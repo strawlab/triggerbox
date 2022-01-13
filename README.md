@@ -64,13 +64,36 @@ Upload the firmware
 
 ## Testing with host PC
 
-Run the standalone demo program on your host PC. First, install
-[rust](https://rustup.rs/), then:
+Run the standalone demo program on your host PC. 
+
+ * Prerequisite 1: install [rust](https://rustup.rs/).
+ * Prerequisite 2 (linux only): make sure you are in the `dialout` group (or
+   whichever group owns the device file - `/dev/ttyUSB0` in the example below):
+   ```sudo adduser `whoami` dialout```. 
+
+The demo can be run like this:
 
     cd braid-triggerbox-rs
     # You may need to change the device path from `/dev/ttyUSB0` in this example.
     # On Windows, this will be something like `COM4` instead of `/dev/ttyUSB0`.
     cargo run -- --device /dev/ttyUSB0 --fps 100
+    
+If successful, the output will look like:
+
+```
+Requested 100 fps, using 100 fps
+Connecting to trigger device ..
+got new time model: None
+.. connected.
+got new time model: Some(ClockModel { gain: 0.009991053259000182, offset: 1642089273.653188, residuals: 0.00008373855939680652, n_measurements: 5 })
+got new time model: Some(ClockModel { gain: 0.009990740683861077, offset: 1642089273.65347, residuals: 0.00008408054048913982, n_measurements: 6 })
+got new time model: Some(ClockModel { gain: 0.009990941849537194, offset: 1642089273.6532729, residuals: 0.00008470585419217969, n_measurements: 7 })
+got new time model: Some(ClockModel { gain: 0.0099910874851048, offset: 1642089273.6531227, residuals: 0.00008554253827242064, n_measurements: 8 })
+got new time model: Some(ClockModel { gain: 0.009991202969104052, offset: 1642089273.652988, residuals: 0.0000863512614728279, n_measurements: 9 })
+got new time model: Some(ClockModel { gain: 0.009991223458200693, offset: 1642089273.652963, residuals: 0.00008639545796995662, n_measurements: 10 })
+got new time model: Some(ClockModel { gain: 0.009991292201448232, offset: 1642089273.6528616, residuals: 0.00008692377247143668, n_measurements: 11 })
+got new time model: Some(ClockModel { gain: 0.009991496510338038, offset: 1642089273.6525416, residuals: 0.00009343214287582668, n_measurements: 12 })
+```
 
 ## License
 
