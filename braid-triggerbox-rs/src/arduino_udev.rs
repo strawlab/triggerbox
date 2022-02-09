@@ -39,6 +39,25 @@ pub(crate) fn crc8maxim(s: &[u8]) -> u8 {
     crc
 }
 
+#[test]
+fn test_crc() {
+    use crc::{Crc, CRC_8_MAXIM_DOW};
+
+    pub const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
+
+    for test_string in [
+        &b"123456789"[..],
+        &b""[..],
+        &b"0"[..],
+        &[0][..],
+        &[0, 1, 2, 3, 4, 255][..],
+        &[255; 255][..],
+        &[0; 255][..],
+    ] {
+        assert_eq!(CRC_MAXIM.checksum(test_string), crc8maxim(test_string));
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 enum UdevError {
     #[error("CRC failed")]
