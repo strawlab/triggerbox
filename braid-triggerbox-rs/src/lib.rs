@@ -221,7 +221,7 @@ impl SerialThread {
                                 }
                                 Cmd::SetDeviceName(name) => {
                                     let computed_crc =
-                                        format!("{:X}", arduino_udev::crc8maxim(&name));
+                                        format!("{:X}", arduino_udev::CRC_MAXIM.checksum(&name));
                                     trace!("computed CRC: {:?}", computed_crc);
 
                                     self.write(b"N=")?;

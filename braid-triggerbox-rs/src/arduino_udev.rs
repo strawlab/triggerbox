@@ -1,6 +1,10 @@
 use crate::{serialport, NameType, DEVICE_NAME_LEN};
 use anyhow::Result;
 
+use crc::{Crc, CRC_8_MAXIM_DOW};
+
+pub const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
+
 fn reset_device(device: &mut Box<dyn serialport::SerialPort>) -> Result<()> {
     device.write_request_to_send(false)?;
     device.write_data_terminal_ready(false)?;
@@ -17,26 +21,6 @@ fn flush_device<W: std::io::Write>(ser: &mut W) -> Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     Ok(())
-}
-
-fn _crc8maxim(mut crc: u8, c: &u8) -> u8 {
-    crc ^= c;
-    for _ in 0..8 {
-        if (crc & 0x01) > 0 {
-            crc = (crc >> 1) ^ 0x8C;
-        } else {
-            crc >>= 1;
-        }
-    }
-    crc
-}
-
-pub(crate) fn crc8maxim(s: &[u8]) -> u8 {
-    let mut crc = 0;
-    for c in s {
-        crc = _crc8maxim(crc, c);
-    }
-    crc
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,7 +54,7 @@ fn get_device_name(
     let expected_crc = std::str::from_utf8(crc_buf).expect("from utf8");
     trace!("expected CRC: {:?}", expected_crc);
 
-    let computed_crc = format!("{:X}", crc8maxim(name));
+    let computed_crc = format!("{:X}", CRC_MAXIM.checksum(name));
     trace!("computed CRC: {:?}", computed_crc);
     if computed_crc == expected_crc {
         let mut result = [0; DEVICE_NAME_LEN];
