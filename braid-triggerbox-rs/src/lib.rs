@@ -441,7 +441,7 @@ impl SerialThread {
 
     fn _handle_version(&mut self, value: u8, _pulsenumber: u32, _count: u16) -> Result<()> {
         trace!("got returned version with value: {}", value);
-        assert!(value == DEVICE_FIRMWARE_VERSION);
+        assert_eq!(value, DEVICE_FIRMWARE_VERSION);
         self.vquery_time = chrono::Utc::now();
         self.version_check_done = true;
         info!("connected to triggerbox firmware version {}", value);
