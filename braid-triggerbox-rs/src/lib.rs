@@ -159,7 +159,7 @@ impl SerialThread {
         self.ser = Some(ser);
         if let Some(name) = &name {
             let name_str = String::from_utf8_lossy(name);
-            debug!("connected to device named {}", name_str);
+            debug!("connected to device named \"{}\"", name_str);
         }
         let mut now = chrono::Utc::now();
 
