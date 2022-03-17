@@ -1,12 +1,5 @@
 #[macro_use]
 extern crate log;
-extern crate byteorder;
-extern crate chrono;
-extern crate lstsq;
-extern crate nalgebra as na;
-extern crate serde;
-extern crate serialport;
-extern crate thread_control;
 
 mod datetime_conversion;
 
@@ -17,10 +10,12 @@ use anyhow::{Context, Result};
 use chrono::Duration;
 use std::io::Write;
 
+use nalgebra as na;
+
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::BTreeMap;
 
-const DEVICE_FIRMWARE_VERSION: u8 = 14;
+use braid_triggerbox_comms::{LedInfo, Prescaler, TopAndPrescaler};
 
 // ----- name type handling
 pub const DEVICE_NAME_LEN: usize = 8;
@@ -69,7 +64,7 @@ pub struct TriggerClockInfoRow {
 
 struct SerialThread {
     device: String,
-    icr1_and_prescaler: Option<Icr1AndPrescaler>,
+    icr1_and_prescaler: Option<TopAndPrescaler>,
     version_check_done: bool,
     qi: u8,
     queries: BTreeMap<u8, chrono::DateTime<chrono::Utc>>,
@@ -85,33 +80,13 @@ struct SerialThread {
 }
 
 #[derive(Debug, Clone)]
-pub enum Prescaler {
-    Scale8,
-    Scale64,
-}
-
-impl Prescaler {
-    fn as_f64(&self) -> f64 {
-        match self {
-            Prescaler::Scale8 => 8.0,
-            Prescaler::Scale64 => 64.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Icr1AndPrescaler {
-    icr1: u16,
-    prescaler: Prescaler,
-}
-
-#[derive(Debug, Clone)]
 pub enum Cmd {
-    Icr1AndPrescaler(Icr1AndPrescaler),
+    TopAndPrescaler(TopAndPrescaler),
     StopPulsesAndReset,
     StartPulses,
     SetDeviceName(InnerNameType),
     SetAOut((f64, f64)),
+    SetLedPulse(LedInfo),
 }
 
 impl SerialThread {
@@ -202,8 +177,8 @@ impl SerialThread {
                         Ok(cmd_tup) => {
                             debug!("got command {:?}", cmd_tup);
                             match cmd_tup {
-                                Cmd::Icr1AndPrescaler(new_value) => {
-                                    self._set_icr1_and_prescaler(new_value)?;
+                                Cmd::TopAndPrescaler(new_value) => {
+                                    self._set_top_and_prescaler(new_value)?;
                                 }
                                 Cmd::StopPulsesAndReset => {
                                     debug!(
@@ -251,6 +226,10 @@ impl SerialThread {
                                     let len = self.ser.as_mut().unwrap().read(&mut buf)?;
                                     let buf = &buf[..len];
                                     debug!("AOUT ignoring values: {:?}", buf);
+                                }
+                                Cmd::SetLedPulse(val) => {
+                                    let buf = val.encode();
+                                    self.write(&buf[..])?;
                                 }
                             }
                         }
@@ -333,15 +312,12 @@ impl SerialThread {
         Ok(())
     }
 
-    fn _set_icr1_and_prescaler(&mut self, new_value: Icr1AndPrescaler) -> Result<()> {
+    fn _set_top_and_prescaler(&mut self, new_value: TopAndPrescaler) -> Result<()> {
         use byteorder::{ByteOrder, LittleEndian};
 
         let mut buf = [0, 0, 0];
-        LittleEndian::write_u16(&mut buf[0..2], new_value.icr1);
-        buf[2] = match &new_value.prescaler {
-            Prescaler::Scale8 => b'1',
-            Prescaler::Scale64 => b'2',
-        };
+        LittleEndian::write_u16(&mut buf[0..2], new_value.avr_icr1());
+        buf[2] = new_value.prescaler_key();
 
         self.icr1_and_prescaler = Some(new_value);
 
@@ -382,7 +358,7 @@ impl SerialThread {
 
         match &self.icr1_and_prescaler {
             Some(s) => {
-                let frac = count as f64 / s.icr1 as f64;
+                let frac = count as f64 / s.avr_icr1() as f64;
                 debug_assert!(0.0 <= frac);
                 debug_assert!(frac <= 1.0);
                 let ino_stamp = na::convert(pulsenumber as f64 + frac);
@@ -441,7 +417,7 @@ impl SerialThread {
 
     fn _handle_version(&mut self, value: u8, _pulsenumber: u32, _count: u16) -> Result<()> {
         trace!("got returned version with value: {}", value);
-        assert_eq!(value, DEVICE_FIRMWARE_VERSION);
+        assert_eq!(value, braid_triggerbox_comms::DEVICE_FIRMWARE_VERSION);
         self.vquery_time = chrono::Utc::now();
         self.version_check_done = true;
         info!("connected to triggerbox firmware version {}", value);
@@ -583,20 +559,20 @@ fn get_rate(rate_ideal: f64, prescaler: Prescaler) -> (u16, f64) {
 /// Returns the triggerbox command and the expected actual frame rate (in frames
 /// per second).
 pub fn make_trig_fps_cmd(rate_ideal: f64) -> (Cmd, f64) {
-    let (icr1_8, rate_actual_8) = get_rate(rate_ideal, Prescaler::Scale8);
-    let (icr1_64, rate_actual_64) = get_rate(rate_ideal, Prescaler::Scale64);
+    let (top_8, rate_actual_8) = get_rate(rate_ideal, Prescaler::Scale8);
+    let (top_64, rate_actual_64) = get_rate(rate_ideal, Prescaler::Scale64);
 
     let error_8 = (rate_ideal - rate_actual_8).abs();
     let error_64 = (rate_ideal - rate_actual_64).abs();
 
-    let (icr1, rate_actual, prescaler) = if error_8 < error_64 {
-        (icr1_8, rate_actual_8, Prescaler::Scale8)
+    let (top, rate_actual, prescaler) = if error_8 < error_64 {
+        (top_8, rate_actual_8, Prescaler::Scale8)
     } else {
-        (icr1_64, rate_actual_64, Prescaler::Scale64)
+        (top_64, rate_actual_64, Prescaler::Scale64)
     };
 
     (
-        Cmd::Icr1AndPrescaler(Icr1AndPrescaler { icr1, prescaler }),
+        Cmd::TopAndPrescaler(TopAndPrescaler::new_avr(top, prescaler)),
         rate_actual,
     )
 }

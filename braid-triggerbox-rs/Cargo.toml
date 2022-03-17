@@ -1,10 +1,11 @@
 [package]
 name = "braid-triggerbox"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Andrew Straw <strawman@astraw.com>"]
-edition = "2018"
 license = "MIT/Apache-2.0"
 description = "camera synchronization trigger box for Braid"
+edition = "2021"
+rust-version = "1.58"
 
 [dependencies]
 thiserror = "1"
@@ -21,3 +22,10 @@ structopt = "0.3"
 env_logger = "0.9"
 crossbeam-channel = "0.5"
 crc = "2.1"
+
+braid-triggerbox-comms = {path="braid-triggerbox-comms"}
+
+[workspace]
+members = [
+    "braid-triggerbox-comms",
+]

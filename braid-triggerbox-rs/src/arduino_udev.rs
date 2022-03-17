@@ -1,4 +1,4 @@
-use crate::{serialport, NameType, DEVICE_NAME_LEN};
+use crate::{NameType, DEVICE_NAME_LEN};
 use anyhow::Result;
 
 use crc::{Crc, CRC_8_MAXIM_DOW};
