@@ -547,33 +547,18 @@ pub fn launch_background_thread(
         std::thread::Builder::new().name("triggerbox_comms".to_string());
     let (flag, control) = thread_control::make_pair();
     let triggerbox_thread_handle = triggerbox_thread_builder.spawn(move || {
-        run_func(|| {
-            let mut triggerbox = SerialThread::new(
-                device,
-                /*raw_tx,*/ cmd,
-                callback,
-                triggerbox_data_tx,
-                Duration::from_std(max_acceptable_measurement_error)?,
-            )?;
-            triggerbox.run(flag, query_dt, assert_device_name)
-        });
+        let mut triggerbox = SerialThread::new(
+            device,
+            /*raw_tx,*/ cmd,
+            callback,
+            triggerbox_data_tx,
+            Duration::from_std(max_acceptable_measurement_error).unwrap(),
+        )
+        .unwrap();
+        triggerbox.run(flag, query_dt, assert_device_name).unwrap();
     })?;
 
     Ok((control, triggerbox_thread_handle))
-}
-
-/// run a function returning Result<()> and handle errors.
-// see https://github.com/withoutboats/failure/issues/76#issuecomment-347402383
-fn run_func<F: FnOnce() -> Result<()>>(real_func: F) {
-    // Decide which command to run, and run it, and print any errors.
-    if let Err(err) = real_func() {
-        let mut stderr = std::io::stderr();
-        writeln!(stderr, "Error: {}", err).expect("unable to write error to stderr");
-        for cause in err.chain() {
-            writeln!(stderr, "Caused by: {}", cause).expect("unable to write error to stderr");
-        }
-        std::process::exit(1);
-    }
 }
 
 fn get_rate(rate_ideal: f64, prescaler: Prescaler) -> (u16, f64) {
