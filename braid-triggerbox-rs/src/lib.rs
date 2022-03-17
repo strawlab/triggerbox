@@ -74,7 +74,7 @@ struct SerialThread {
     last_time: chrono::DateTime<chrono::Utc>,
     past_data: Vec<(f64, f64)>,
     allow_requesting_clock_sync: bool,
-    callback: Box<dyn FnMut(Option<ClockModel>)>,
+    on_new_model_cb: Box<dyn FnMut(Option<ClockModel>)>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     max_acceptable_measurement_error: Duration,
 }
@@ -93,7 +93,7 @@ impl SerialThread {
     fn new(
         device: String,
         outq: Receiver<Cmd>,
-        callback: Box<dyn FnMut(Option<ClockModel>)>,
+        on_new_model_cb: Box<dyn FnMut(Option<ClockModel>)>,
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
         max_acceptable_measurement_error: Duration,
     ) -> Result<Self> {
@@ -111,7 +111,7 @@ impl SerialThread {
             last_time: vquery_time + Duration::seconds(1), // and 1 second after version query
             past_data: Vec::new(),
             allow_requesting_clock_sync: false,
-            callback,
+            on_new_model_cb,
             triggerbox_data_tx,
             max_acceptable_measurement_error,
         })
@@ -187,7 +187,7 @@ impl SerialThread {
                                     self.allow_requesting_clock_sync = false;
                                     self.queries.clear();
                                     self.past_data.clear();
-                                    (self.callback)(None);
+                                    (self.on_new_model_cb)(None);
                                     self.write(b"S0")?;
                                 }
                                 Cmd::StartPulses => {
@@ -400,7 +400,7 @@ impl SerialThread {
                         "new: ClockModel{{gain: {}, offset: {}}}, per_point_residual: {}",
                         gain, offset, per_point_residual
                     );
-                    (self.callback)(Some(ClockModel {
+                    (self.on_new_model_cb)(Some(ClockModel {
                         gain,
                         offset,
                         residuals,
@@ -511,7 +511,7 @@ fn test_fit_time_model() {
 }
 
 pub fn launch_background_thread(
-    callback: Box<dyn FnMut(Option<ClockModel>) + Send>,
+    on_new_model_cb: Box<dyn FnMut(Option<ClockModel>) + Send>,
     device: String,
     cmd: Receiver<Cmd>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
@@ -526,7 +526,7 @@ pub fn launch_background_thread(
         let mut triggerbox = SerialThread::new(
             device,
             /*raw_tx,*/ cmd,
-            callback,
+            on_new_model_cb,
             triggerbox_data_tx,
             Duration::from_std(max_acceptable_measurement_error).unwrap(),
         )
