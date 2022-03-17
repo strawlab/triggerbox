@@ -53,23 +53,24 @@ struct Opt {
     led_max_duty: Option<f32>,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     env_logger::init();
     info!("braid_triggerbox starting");
     let opt = Opt::from_args();
 
     let mut quit_early = false;
 
-    let (tx, rx) = crossbeam_channel::unbounded();
+    let (tx, rx) = tokio::sync::mpsc::channel(10);
 
-    tx.send(Cmd::StopPulsesAndReset)?;
+    tx.send(Cmd::StopPulsesAndReset).await?;
     let (rate_cmd, rate_actual) = make_trig_fps_cmd(opt.fps);
     println!("Requested {} fps, using {} fps", opt.fps, rate_actual);
-    tx.send(rate_cmd)?;
+    tx.send(rate_cmd).await?;
     if let Some(set_device_name) = opt.set_device_name {
         let actual_name = to_name_type(&set_device_name)?;
         println!("Setting name to {}", name_display(&Some(actual_name)));
-        tx.send(Cmd::SetDeviceName(actual_name))?;
+        tx.send(Cmd::SetDeviceName(actual_name)).await?;
         quit_early = true;
     }
 
@@ -92,10 +93,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     if send_led {
-        tx.send(Cmd::SetLedPulse(led_info))?;
+        tx.send(Cmd::SetLedPulse(led_info)).await?;
     }
 
-    tx.send(Cmd::SetAOut((opt.aout1, opt.aout2)))?;
+    tx.send(Cmd::SetAOut((opt.aout1, opt.aout2))).await?;
 
     let assert_device_name = opt
         .assert_device_name
@@ -104,7 +105,7 @@ fn main() -> anyhow::Result<()> {
         .map(to_name_type)
         .transpose()?;
 
-    tx.send(Cmd::StartPulses)?;
+    tx.send(Cmd::StartPulses).await?;
 
     let cb = Box::new(|tm| {
         println!("got new time model: {:?}", tm);
@@ -114,7 +115,13 @@ fn main() -> anyhow::Result<()> {
     let max_acceptable_measurement_error =
         std::time::Duration::from_millis(opt.max_acceptable_measurement_error);
 
-    let (control, _handle) = braid_triggerbox::launch_background_thread(
+    println!("Connecting to trigger device.");
+
+    if quit_early {
+        println!("Should quit early, but cannot");
+    }
+
+    braid_triggerbox::run_triggerbox(
         cb,
         opt.device,
         rx,
@@ -122,20 +129,8 @@ fn main() -> anyhow::Result<()> {
         query_dt,
         assert_device_name,
         max_acceptable_measurement_error,
-    )?;
+    )
+    .await?;
 
-    println!("Connecting to trigger device ..");
-    while !tx.is_empty() {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    println!(".. connected.");
-
-    if quit_early {
-        return Ok(());
-    }
-
-    while !control.is_done() {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
     Ok(())
 }

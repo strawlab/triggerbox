@@ -8,12 +8,14 @@ use crate::arduino_udev::serial_handshake;
 
 use anyhow::{Context, Result};
 use chrono::Duration;
-use std::io::Write;
 
 use nalgebra as na;
 
-use crossbeam_channel::{Receiver, Sender};
 use std::collections::BTreeMap;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc::{Receiver, Sender},
+};
 
 use braid_triggerbox_comms::{LedInfo, Prescaler, TopAndPrescaler};
 
@@ -22,6 +24,8 @@ pub const DEVICE_NAME_LEN: usize = 8;
 
 pub type InnerNameType = [u8; DEVICE_NAME_LEN];
 pub type NameType = Option<InnerNameType>;
+
+pub type ClockModelCallback = Box<dyn FnMut(Option<ClockModel>) + Send>;
 
 pub fn to_name_type(x: &str) -> anyhow::Result<InnerNameType> {
     let mut name = [0; DEVICE_NAME_LEN];
@@ -60,21 +64,19 @@ pub struct TriggerClockInfoRow {
     pub stop_timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-// ------ serial thread type
-
-struct SerialThread {
+struct SerialHandler {
     device: String,
     icr1_and_prescaler: Option<TopAndPrescaler>,
     version_check_done: bool,
     qi: u8,
     queries: BTreeMap<u8, chrono::DateTime<chrono::Utc>>,
-    ser: Option<Box<dyn serialport::SerialPort>>,
+    ser: Option<tokio_serial::SerialStream>,
     outq: Receiver<Cmd>,
     vquery_time: chrono::DateTime<chrono::Utc>,
     last_time: chrono::DateTime<chrono::Utc>,
     past_data: Vec<(f64, f64)>,
     allow_requesting_clock_sync: bool,
-    on_new_model_cb: Box<dyn FnMut(Option<ClockModel>)>,
+    on_new_model_cb: ClockModelCallback,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     max_acceptable_measurement_error: Duration,
 }
@@ -89,11 +91,11 @@ pub enum Cmd {
     SetLedPulse(LedInfo),
 }
 
-impl SerialThread {
+impl SerialHandler {
     fn new(
         device: String,
         outq: Receiver<Cmd>,
-        on_new_model_cb: Box<dyn FnMut(Option<ClockModel>)>,
+        on_new_model_cb: ClockModelCallback,
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
         max_acceptable_measurement_error: Duration,
     ) -> Result<Self> {
@@ -117,30 +119,31 @@ impl SerialThread {
         })
     }
 
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<()> {
+    async fn write(&mut self, buf: &[u8]) -> tokio::io::Result<()> {
         if let Some(ref mut ser) = self.ser {
             trace!("sending: \"{}\"", String::from_utf8_lossy(buf));
             for byte in buf.iter() {
                 trace!("sending byte: {}", byte);
             }
-            ser.write_all(buf)?;
+            AsyncWriteExt::write_all(ser, buf).await?;
         } else {
             panic!("serial device null")
         }
         Ok(())
     }
 
-    fn run(
-        &mut self,
-        flag: thread_control::Flag,
+    async fn run(
+        mut self: SerialHandler,
         query_dt: std::time::Duration,
         assert_device_name: NameType,
+        baud_rate: u32,
     ) -> Result<()> {
         let query_dt = Duration::from_std(query_dt)?;
 
-        // wtf - what is this doing if we only open port below?
-        let (mut ser, name) =
-            serial_handshake(&self.device).context(format!("opening device {}", self.device))?;
+        let (ser, name) = serial_handshake(&self.device, baud_rate)
+            .await
+            .map_err(anyhow::Error::from)
+            .with_context(|| format!("opening device {}", self.device))?;
 
         if assert_device_name.is_some() && name != assert_device_name {
             anyhow::bail!(
@@ -152,9 +155,7 @@ impl SerialThread {
             );
         }
 
-        // Not sure if it is OK to bump up baud rate in mid communication.
-        ser.set_baud_rate(115_200)?;
-        ser.set_timeout(std::time::Duration::from_millis(10))?;
+        // ser.set_timeout(std::time::Duration::from_millis(10))?;
 
         self.ser = Some(ser);
         if let Some(name) = &name {
@@ -169,76 +170,87 @@ impl SerialThread {
         let mut read_buf: Vec<u8> = vec![0; 100];
         let mut version_check_started = false;
 
-        while flag.alive() {
+        loop {
             // handle new commands
             if self.version_check_done {
                 loop {
-                    match self.outq.recv_timeout(std::time::Duration::from_millis(0)) {
-                        Ok(cmd_tup) => {
-                            debug!("got command {:?}", cmd_tup);
-                            match cmd_tup {
-                                Cmd::TopAndPrescaler(new_value) => {
-                                    self._set_top_and_prescaler(new_value)?;
-                                }
-                                Cmd::StopPulsesAndReset => {
-                                    debug!(
+                    match tokio::time::timeout(
+                        std::time::Duration::from_millis(0),
+                        self.outq.recv(),
+                    )
+                    .await
+                    {
+                        Ok(opt_cmd_tup) => {
+                            if let Some(cmd_tup) = opt_cmd_tup {
+                                debug!("got command {:?}", cmd_tup);
+                                match cmd_tup {
+                                    Cmd::TopAndPrescaler(new_value) => {
+                                        self._set_top_and_prescaler(new_value).await?;
+                                    }
+                                    Cmd::StopPulsesAndReset => {
+                                        debug!(
                                         "will reset counters. dropping outstanding info requests."
                                     );
-                                    self.allow_requesting_clock_sync = false;
-                                    self.queries.clear();
-                                    self.past_data.clear();
-                                    (self.on_new_model_cb)(None);
-                                    self.write(b"S0")?;
-                                }
-                                Cmd::StartPulses => {
-                                    self.allow_requesting_clock_sync = true;
-                                    self.write(b"S1")?;
-                                }
-                                Cmd::SetDeviceName(name) => {
-                                    let computed_crc =
-                                        format!("{:X}", arduino_udev::CRC_MAXIM.checksum(&name));
-                                    trace!("computed CRC: {:?}", computed_crc);
-
-                                    self.write(b"N=")?;
-                                    self.write(&name)?;
-                                    self.write(computed_crc.as_bytes())?;
-                                }
-                                Cmd::SetAOut((volts1, volts2)) => {
-                                    fn volts_to_dac(volts: f64) -> u16 {
-                                        // Convert voltage to fraction and clamp.
-                                        let frac = (volts / 4.096).clamp(0.0, 1.0);
-                                        // Compute integer DAC value.
-                                        let val: u16 = (frac * 4095.0).round() as u16;
-                                        val
+                                        self.allow_requesting_clock_sync = false;
+                                        self.queries.clear();
+                                        self.past_data.clear();
+                                        (self.on_new_model_cb)(None);
+                                        self.write(b"S0").await?;
                                     }
-                                    let val1 = volts_to_dac(volts1);
-                                    let val2 = volts_to_dac(volts2);
+                                    Cmd::StartPulses => {
+                                        self.allow_requesting_clock_sync = true;
+                                        self.write(b"S1").await?;
+                                    }
+                                    Cmd::SetDeviceName(name) => {
+                                        let computed_crc = format!(
+                                            "{:X}",
+                                            arduino_udev::CRC_MAXIM.checksum(&name)
+                                        );
+                                        trace!("computed CRC: {:?}", computed_crc);
 
-                                    self.write(b"O=")?;
-                                    self.write(&val1.to_le_bytes())?;
-                                    self.write(&val2.to_le_bytes())?;
-                                    self.write(b"x")?;
+                                        self.write(b"N=").await?;
+                                        self.write(&name).await?;
+                                        self.write(computed_crc.as_bytes()).await?;
+                                    }
+                                    Cmd::SetAOut((volts1, volts2)) => {
+                                        fn volts_to_dac(volts: f64) -> u16 {
+                                            // Convert voltage to fraction and clamp.
+                                            let frac = (volts / 4.096).clamp(0.0, 1.0);
+                                            // Compute integer DAC value.
+                                            let val: u16 = (frac * 4095.0).round() as u16;
+                                            val
+                                        }
+                                        let val1 = volts_to_dac(volts1);
+                                        let val2 = volts_to_dac(volts2);
 
-                                    // Now wait for return value.
-                                    std::thread::sleep(std::time::Duration::from_millis(50));
+                                        self.write(b"O=").await?;
+                                        self.write(&val1.to_le_bytes()).await?;
+                                        self.write(&val2.to_le_bytes()).await?;
+                                        self.write(b"x").await?;
 
-                                    let mut buf = vec![0; 100];
-                                    let len = self.ser.as_mut().unwrap().read(&mut buf)?;
-                                    let buf = &buf[..len];
-                                    debug!("AOUT ignoring values: {:?}", buf);
+                                        // Now wait for return value.
+                                        tokio::time::sleep(std::time::Duration::from_millis(50))
+                                            .await;
+
+                                        let mut buf = vec![0; 100];
+                                        let len = self.ser.as_mut().unwrap().read(&mut buf).await?;
+                                        let buf = &buf[..len];
+                                        debug!("AOUT ignoring values: {:?}", buf);
+                                    }
+                                    Cmd::SetLedPulse(val) => {
+                                        let buf = val.encode();
+                                        self.write(&buf[..]).await?;
+                                    }
                                 }
-                                Cmd::SetLedPulse(val) => {
-                                    let buf = val.encode();
-                                    self.write(&buf[..])?;
-                                }
+                            } else {
+                                // no more commands, sender hung up
+                                info!("exiting run loop");
+                                return Ok(());
                             }
                         }
-                        Err(e) => {
-                            if e.is_timeout() {
-                                break;
-                            } else {
-                                return Err(e.into());
-                            }
+                        Err(_elapsed) => {
+                            // timeout
+                            break;
                         }
                     }
                 }
@@ -249,8 +261,14 @@ impl SerialThread {
                 // TODO: this could be made (much) more efficient. Right
                 // now, we wake up every timeout duration and run the whole
                 // cycle when no byte arrives.
-                match ser.read(&mut read_buf) {
-                    Ok(n_bytes_read) => {
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(10),
+                    ser.read(&mut read_buf),
+                )
+                .await
+                {
+                    Ok(r) => {
+                        let n_bytes_read = r?;
                         for i in 0..n_bytes_read {
                             let byte = read_buf[i];
                             trace!(
@@ -261,19 +279,13 @@ impl SerialThread {
                             buf.push(byte);
                         }
                     }
-                    Err(e) => match e.kind() {
-                        std::io::ErrorKind::TimedOut => {}
-                        _ => {
-                            return Err(e.into());
-                        }
-                    },
+                    Err(_elapsed) => {}
                 }
             } else {
                 unreachable!();
             }
-
             // handle pending data
-            buf = self._h(buf)?;
+            buf = self._h(buf).await?;
 
             now = chrono::Utc::now();
 
@@ -285,7 +297,7 @@ impl SerialThread {
                     debug!("making clock sample request. qi: {}, now: {}", self.qi, now);
                     self.queries.insert(self.qi, now);
                     let send_buf = [b'P', self.qi];
-                    self.write(&send_buf)?;
+                    self.write(&send_buf).await?;
                     self.qi = self.qi.wrapping_add(1);
                     self.last_time = now;
                 }
@@ -293,7 +305,7 @@ impl SerialThread {
                 // request firmware version
                 if !version_check_started && now >= self.vquery_time {
                     info!("checking firmware version");
-                    self.write(b"V?")?;
+                    self.write(b"V?").await?;
                     version_check_started = true;
                     self.vquery_time = now;
                 }
@@ -308,11 +320,9 @@ impl SerialThread {
                 }
             }
         }
-        info!("exiting run loop");
-        Ok(())
     }
 
-    fn _set_top_and_prescaler(&mut self, new_value: TopAndPrescaler) -> Result<()> {
+    async fn _set_top_and_prescaler(&mut self, new_value: TopAndPrescaler) -> Result<()> {
         use byteorder::{ByteOrder, LittleEndian};
 
         let mut buf = [0, 0, 0];
@@ -321,12 +331,17 @@ impl SerialThread {
 
         self.icr1_and_prescaler = Some(new_value);
 
-        self.write(b"T=")?;
-        self.write(&buf)?;
+        self.write(b"T=").await?;
+        self.write(&buf).await?;
         Ok(())
     }
 
-    fn _handle_returned_timestamp(&mut self, qi: u8, pulsenumber: u32, count: u16) -> Result<()> {
+    async fn _handle_returned_timestamp(
+        &mut self,
+        qi: u8,
+        pulsenumber: u32,
+        count: u16,
+    ) -> Result<()> {
         debug!(
             "got returned timestamp with qi: {}, pulsenumber: {}, count: {}",
             qi, pulsenumber, count
@@ -371,7 +386,7 @@ impl SerialThread {
                         tcnt: (frac * 255.0) as u8,
                         stop_timestamp: now,
                     };
-                    match tbox_tx.send(to_save) {
+                    match tbox_tx.send(to_save).await {
                         Ok(()) => {}
                         Err(e) => {
                             warn!("ignoring {}", e);
@@ -424,7 +439,7 @@ impl SerialThread {
         Ok(())
     }
 
-    fn _h(&mut self, buf: Vec<u8>) -> Result<Vec<u8>> {
+    async fn _h(&mut self, buf: Vec<u8>) -> Result<Vec<u8>> {
         if buf.len() >= 3 {
             // header, length, checksum is minimum
             let mut valid_n_chars = None;
@@ -456,7 +471,10 @@ impl SerialThread {
                     let count = LittleEndian::read_u16(&bytes[5..7]);
 
                     match packet_type {
-                        'P' => self._handle_returned_timestamp(value, pulsenumber, count)?,
+                        'P' => {
+                            self._handle_returned_timestamp(value, pulsenumber, count)
+                                .await?
+                        }
                         'V' => self._handle_version(value, pulsenumber, count)?,
                         _ => unreachable!(),
                     };
@@ -510,31 +528,27 @@ fn test_fit_time_model() {
     assert!((offset - 12.0).abs() < epsilon);
 }
 
-pub fn launch_background_thread(
-    on_new_model_cb: Box<dyn FnMut(Option<ClockModel>) + Send>,
+pub async fn run_triggerbox(
+    on_new_model_cb: ClockModelCallback,
     device: String,
     cmd: Receiver<Cmd>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     query_dt: std::time::Duration,
     assert_device_name: NameType,
     max_acceptable_measurement_error: std::time::Duration,
-) -> Result<(thread_control::Control, std::thread::JoinHandle<()>)> {
-    let triggerbox_thread_builder =
-        std::thread::Builder::new().name("triggerbox_comms".to_string());
-    let (flag, control) = thread_control::make_pair();
-    let triggerbox_thread_handle = triggerbox_thread_builder.spawn(move || {
-        let mut triggerbox = SerialThread::new(
-            device,
-            /*raw_tx,*/ cmd,
-            on_new_model_cb,
-            triggerbox_data_tx,
-            Duration::from_std(max_acceptable_measurement_error).unwrap(),
-        )
-        .unwrap();
-        triggerbox.run(flag, query_dt, assert_device_name).unwrap();
-    })?;
-
-    Ok((control, triggerbox_thread_handle))
+) -> Result<()> {
+    let baud_rate = 115_200;
+    let triggerbox = SerialHandler::new(
+        device,
+        /*raw_tx,*/ cmd,
+        on_new_model_cb,
+        triggerbox_data_tx,
+        Duration::from_std(max_acceptable_measurement_error).unwrap(),
+    )
+    .unwrap();
+    triggerbox
+        .run(query_dt, assert_device_name, baud_rate)
+        .await
 }
 
 fn get_rate(rate_ideal: f64, prescaler: Prescaler) -> (u16, f64) {

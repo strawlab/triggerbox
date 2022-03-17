@@ -10,17 +10,16 @@ rust-version = "1.58"
 [dependencies]
 thiserror = "1"
 anyhow = "1.0"
-serialport = "4"
+tokio = {version="1.0.1", default-features=false, features=["sync","macros","time","io-util","rt-multi-thread"]}
+tokio-serial = "5.4.1"
 log = "0.4"
 byteorder = "1"
-thread-control = "0.1"
 serde = "1.0"
 nalgebra = "0.30"
 chrono = "0.4"
 lstsq = "0.3"
 structopt = "0.3"
 env_logger = "0.9"
-crossbeam-channel = "0.5"
 crc = "2.1"
 
 braid-triggerbox-comms = {version="0.1", path="braid-triggerbox-comms"}
