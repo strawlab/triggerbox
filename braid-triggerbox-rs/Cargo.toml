@@ -23,7 +23,7 @@ env_logger = "0.9"
 crossbeam-channel = "0.5"
 crc = "2.1"
 
-braid-triggerbox-comms = {path="braid-triggerbox-comms"}
+braid-triggerbox-comms = {version="0.1", path="braid-triggerbox-comms"}
 
 [workspace]
 members = [
