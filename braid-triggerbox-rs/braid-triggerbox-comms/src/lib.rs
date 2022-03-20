@@ -157,16 +157,10 @@ impl LedInfo {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 struct AccumState {
     last_update: u64,
-}
-
-impl Default for AccumState {
-    fn default() -> Self {
-        Self { last_update: 0 }
-    }
 }
 
 pub const BUF_MAX_SZ: usize = 32;
