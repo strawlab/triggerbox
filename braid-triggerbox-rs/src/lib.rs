@@ -70,7 +70,6 @@ struct SerialHandler {
     qi: u8,
     queries: BTreeMap<u8, chrono::DateTime<chrono::Utc>>,
     ser: tokio_serial::SerialStream,
-    name: Option<Vec<u8>>,
     outq: Receiver<Cmd>,
     vquery_time: chrono::DateTime<chrono::Utc>,
     last_time: chrono::DateTime<chrono::Utc>,
@@ -104,6 +103,8 @@ impl SerialHandler {
         let now = chrono::Utc::now();
         let vquery_time = now + Duration::seconds(1);
 
+        debug!("Opening device at path {}", device_path);
+
         let (ser, name) = match tokio::time::timeout(
             std::time::Duration::from_millis(250),
             serial_handshake(&device_path, baud_rate),
@@ -114,6 +115,13 @@ impl SerialHandler {
             Err(elapsed) => Err(elapsed).map_err(anyhow::Error::from),
         }
         .with_context(|| format!("opening device {}", device_path))?;
+
+        if let Some(name) = &name {
+            let name_str = String::from_utf8_lossy(name);
+            debug!("Connected to device named \"{}\".", name_str);
+        } else {
+            debug!("Connected to unnamed device.");
+        }
 
         if assert_device_name.is_some() && name != assert_device_name {
             anyhow::bail!(
@@ -131,7 +139,6 @@ impl SerialHandler {
             qi: 0,
             queries: BTreeMap::new(),
             ser,
-            name: name.map(Into::into),
             outq,
             vquery_time, // wait 1 second before first version query
             last_time: vquery_time + Duration::seconds(1), // and 1 second after version query
@@ -156,12 +163,6 @@ impl SerialHandler {
     async fn run_forever(mut self: SerialHandler, query_dt: std::time::Duration) -> Result<()> {
         let query_dt = Duration::from_std(query_dt)?;
 
-        // ser.set_timeout(std::time::Duration::from_millis(10))?;
-
-        if let Some(name) = &self.name {
-            let name_str = String::from_utf8_lossy(name);
-            debug!("connected to device named \"{}\"", name_str);
-        }
         let mut now = chrono::Utc::now();
 
         let connect_time = now;
