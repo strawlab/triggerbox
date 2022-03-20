@@ -65,12 +65,12 @@ pub struct TriggerClockInfoRow {
 }
 
 struct SerialHandler {
-    device: String,
     icr1_and_prescaler: Option<TopAndPrescaler>,
     version_check_done: bool,
     qi: u8,
     queries: BTreeMap<u8, chrono::DateTime<chrono::Utc>>,
-    ser: Option<tokio_serial::SerialStream>,
+    ser: tokio_serial::SerialStream,
+    name: Option<Vec<u8>>,
     outq: Receiver<Cmd>,
     vquery_time: chrono::DateTime<chrono::Utc>,
     last_time: chrono::DateTime<chrono::Utc>,
@@ -92,22 +92,46 @@ pub enum Cmd {
 }
 
 impl SerialHandler {
-    fn new(
-        device: String,
+    async fn new(
+        device_path: String,
         outq: Receiver<Cmd>,
         on_new_model_cb: ClockModelCallback,
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
         max_acceptable_measurement_error: Duration,
+        assert_device_name: NameType,
+        baud_rate: u32,
     ) -> Result<Self> {
         let now = chrono::Utc::now();
         let vquery_time = now + Duration::seconds(1);
+
+        let (ser, name) = match tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            serial_handshake(&device_path, baud_rate),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(elapsed) => Err(elapsed).map_err(anyhow::Error::from),
+        }
+        .with_context(|| format!("opening device {}", device_path))?;
+
+        if assert_device_name.is_some() && name != assert_device_name {
+            anyhow::bail!(
+                "Found name {}, but expected {}. ({:?} vs {:?}.)",
+                name_display(&name),
+                name_display(&assert_device_name),
+                name,
+                assert_device_name,
+            );
+        }
+
         Ok(Self {
-            device,
             icr1_and_prescaler: None,
             version_check_done: false,
             qi: 0,
             queries: BTreeMap::new(),
-            ser: None,
+            ser,
+            name: name.map(Into::into),
             outq,
             vquery_time, // wait 1 second before first version query
             last_time: vquery_time + Duration::seconds(1), // and 1 second after version query
@@ -120,45 +144,21 @@ impl SerialHandler {
     }
 
     async fn write(&mut self, buf: &[u8]) -> tokio::io::Result<()> {
-        if let Some(ref mut ser) = self.ser {
-            trace!("sending: \"{}\"", String::from_utf8_lossy(buf));
-            for byte in buf.iter() {
-                trace!("sending byte: {}", byte);
-            }
-            AsyncWriteExt::write_all(ser, buf).await?;
-        } else {
-            panic!("serial device null")
+        trace!("sending: \"{}\"", String::from_utf8_lossy(buf));
+        for byte in buf.iter() {
+            trace!("sending byte: {}", byte);
         }
+        AsyncWriteExt::write_all(&mut self.ser, buf).await?;
         Ok(())
     }
 
-    async fn run(
-        mut self: SerialHandler,
-        query_dt: std::time::Duration,
-        assert_device_name: NameType,
-        baud_rate: u32,
-    ) -> Result<()> {
+    /// Run forever, handling interaction with the triggerbox hardware device.
+    async fn run_forever(mut self: SerialHandler, query_dt: std::time::Duration) -> Result<()> {
         let query_dt = Duration::from_std(query_dt)?;
-
-        let (ser, name) = serial_handshake(&self.device, baud_rate)
-            .await
-            .map_err(anyhow::Error::from)
-            .with_context(|| format!("opening device {}", self.device))?;
-
-        if assert_device_name.is_some() && name != assert_device_name {
-            anyhow::bail!(
-                "Found name {}, but expected {}. ({:?} vs {:?}.)",
-                name_display(&name),
-                name_display(&assert_device_name),
-                name,
-                assert_device_name,
-            );
-        }
 
         // ser.set_timeout(std::time::Duration::from_millis(10))?;
 
-        self.ser = Some(ser);
-        if let Some(name) = &name {
+        if let Some(name) = &self.name {
             let name_str = String::from_utf8_lossy(name);
             debug!("connected to device named \"{}\"", name_str);
         }
@@ -233,7 +233,7 @@ impl SerialHandler {
                                             .await;
 
                                         let mut buf = vec![0; 100];
-                                        let len = self.ser.as_mut().unwrap().read(&mut buf).await?;
+                                        let len = self.ser.read(&mut buf).await?;
                                         let buf = &buf[..len];
                                         debug!("AOUT ignoring values: {:?}", buf);
                                     }
@@ -257,13 +257,13 @@ impl SerialHandler {
             }
 
             // get all pending data
-            if let Some(ref mut ser) = self.ser {
+            {
                 // TODO: this could be made (much) more efficient. Right
                 // now, we wake up every timeout duration and run the whole
                 // cycle when no byte arrives.
                 match tokio::time::timeout(
                     std::time::Duration::from_millis(10),
-                    ser.read(&mut read_buf),
+                    self.ser.read(&mut read_buf),
                 )
                 .await
                 {
@@ -281,8 +281,6 @@ impl SerialHandler {
                     }
                     Err(_elapsed) => {}
                 }
-            } else {
-                unreachable!();
             }
             // handle pending data
             buf = self._h(buf).await?;
@@ -531,7 +529,7 @@ fn test_fit_time_model() {
 pub async fn run_triggerbox(
     on_new_model_cb: ClockModelCallback,
     device: String,
-    cmd: Receiver<Cmd>,
+    outq: Receiver<Cmd>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     query_dt: std::time::Duration,
     assert_device_name: NameType,
@@ -540,15 +538,15 @@ pub async fn run_triggerbox(
     let baud_rate = 115_200;
     let triggerbox = SerialHandler::new(
         device,
-        /*raw_tx,*/ cmd,
+        outq,
         on_new_model_cb,
         triggerbox_data_tx,
         Duration::from_std(max_acceptable_measurement_error).unwrap(),
+        assert_device_name,
+        baud_rate,
     )
-    .unwrap();
-    triggerbox
-        .run(query_dt, assert_device_name, baud_rate)
-        .await
+    .await?;
+    triggerbox.run_forever(query_dt).await
 }
 
 fn get_rate(rate_ideal: f64, prescaler: Prescaler) -> (u16, f64) {
