@@ -106,7 +106,7 @@ impl SerialHandler {
         debug!("Opening device at path {}", device_path);
 
         let (ser, name) = match tokio::time::timeout(
-            std::time::Duration::from_millis(250),
+            std::time::Duration::from_millis(5000),
             serial_handshake(&device_path, baud_rate),
         )
         .await
