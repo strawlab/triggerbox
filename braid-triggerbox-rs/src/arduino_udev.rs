@@ -17,9 +17,9 @@ async fn reset_device(device: &mut tokio_serial::SerialStream) -> Result<()> {
     Ok(())
 }
 
-async fn flush_device<W: std::io::Write>(ser: &mut W) -> Result<()> {
+async fn flush_device<W: tokio::io::AsyncWriteExt + std::marker::Unpin>(ser: &mut W) -> Result<()> {
     for _ in 0..5 {
-        ser.flush()?;
+        ser.flush().await?;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     Ok(())
@@ -36,8 +36,9 @@ enum UdevError {
 async fn get_device_name(
     device: &mut tokio_serial::SerialStream,
 ) -> std::result::Result<NameType, UdevError> {
-    use std::io::{Read, Write};
-    device.write_all(b"N?")?;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    device.write_all(b"N?").await?;
 
     let alloc_len = DEVICE_NAME_LEN + 2;
 
@@ -46,7 +47,7 @@ async fn get_device_name(
     // Wait half second for full answer.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    let len = device.read(&mut buf)?;
+    let len = device.read(&mut buf).await?;
     assert!(len > DEVICE_NAME_LEN, "No CRC returned");
 
     let name_and_crc = &buf[..len];
@@ -80,7 +81,8 @@ pub async fn serial_handshake(
 
     debug!("Resetting port {}", serial_device);
     reset_device(&mut ser).await?;
-    tokio::time::sleep(std::time::Duration::from_millis(2_500)).await;
+    debug!("Sleeping 10 seconds. (This is required for Arduino Nano to reset.)");
+    tokio::time::sleep(std::time::Duration::from_millis(10_000)).await;
     debug!("Flushing serial port");
     flush_device(&mut ser).await?;
     debug!("Getting device name");
