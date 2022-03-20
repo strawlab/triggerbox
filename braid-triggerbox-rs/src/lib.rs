@@ -33,7 +33,7 @@ pub fn to_name_type(x: &str) -> anyhow::Result<InnerNameType> {
     if bytes.len() > DEVICE_NAME_LEN {
         anyhow::bail!("Maximum name length ({} chars) exceeded.", DEVICE_NAME_LEN);
     }
-    (&mut name[..bytes.len()]).copy_from_slice(bytes);
+    name[..bytes.len()].copy_from_slice(bytes);
     Ok(name)
 }
 
@@ -173,85 +173,70 @@ impl SerialHandler {
         loop {
             // handle new commands
             if self.version_check_done {
-                loop {
-                    match tokio::time::timeout(
-                        std::time::Duration::from_millis(0),
-                        self.outq.recv(),
-                    )
-                    .await
-                    {
-                        Ok(opt_cmd_tup) => {
-                            if let Some(cmd_tup) = opt_cmd_tup {
-                                debug!("got command {:?}", cmd_tup);
-                                match cmd_tup {
-                                    Cmd::TopAndPrescaler(new_value) => {
-                                        self._set_top_and_prescaler(new_value).await?;
-                                    }
-                                    Cmd::StopPulsesAndReset => {
-                                        debug!(
-                                        "will reset counters. dropping outstanding info requests."
-                                    );
-                                        self.allow_requesting_clock_sync = false;
-                                        self.queries.clear();
-                                        self.past_data.clear();
-                                        (self.on_new_model_cb)(None);
-                                        self.write(b"S0").await?;
-                                    }
-                                    Cmd::StartPulses => {
-                                        self.allow_requesting_clock_sync = true;
-                                        self.write(b"S1").await?;
-                                    }
-                                    Cmd::SetDeviceName(name) => {
-                                        let computed_crc = format!(
-                                            "{:X}",
-                                            arduino_udev::CRC_MAXIM.checksum(&name)
-                                        );
-                                        trace!("computed CRC: {:?}", computed_crc);
+                while let Ok(opt_cmd_tup) =
+                    tokio::time::timeout(std::time::Duration::from_millis(0), self.outq.recv())
+                        .await
+                {
+                    if let Some(cmd_tup) = opt_cmd_tup {
+                        debug!("got command {:?}", cmd_tup);
+                        match cmd_tup {
+                            Cmd::TopAndPrescaler(new_value) => {
+                                self._set_top_and_prescaler(new_value).await?;
+                            }
+                            Cmd::StopPulsesAndReset => {
+                                debug!("will reset counters. dropping outstanding info requests.");
+                                self.allow_requesting_clock_sync = false;
+                                self.queries.clear();
+                                self.past_data.clear();
+                                (self.on_new_model_cb)(None);
+                                self.write(b"S0").await?;
+                            }
+                            Cmd::StartPulses => {
+                                self.allow_requesting_clock_sync = true;
+                                self.write(b"S1").await?;
+                            }
+                            Cmd::SetDeviceName(name) => {
+                                let computed_crc =
+                                    format!("{:X}", arduino_udev::CRC_MAXIM.checksum(&name));
+                                trace!("computed CRC: {:?}", computed_crc);
 
-                                        self.write(b"N=").await?;
-                                        self.write(&name).await?;
-                                        self.write(computed_crc.as_bytes()).await?;
-                                    }
-                                    Cmd::SetAOut((volts1, volts2)) => {
-                                        fn volts_to_dac(volts: f64) -> u16 {
-                                            // Convert voltage to fraction and clamp.
-                                            let frac = (volts / 4.096).clamp(0.0, 1.0);
-                                            // Compute integer DAC value.
-                                            let val: u16 = (frac * 4095.0).round() as u16;
-                                            val
-                                        }
-                                        let val1 = volts_to_dac(volts1);
-                                        let val2 = volts_to_dac(volts2);
-
-                                        self.write(b"O=").await?;
-                                        self.write(&val1.to_le_bytes()).await?;
-                                        self.write(&val2.to_le_bytes()).await?;
-                                        self.write(b"x").await?;
-
-                                        // Now wait for return value.
-                                        tokio::time::sleep(std::time::Duration::from_millis(50))
-                                            .await;
-
-                                        let mut buf = vec![0; 100];
-                                        let len = self.ser.read(&mut buf).await?;
-                                        let buf = &buf[..len];
-                                        debug!("AOUT ignoring values: {:?}", buf);
-                                    }
-                                    Cmd::SetLedPulse(val) => {
-                                        let buf = val.encode();
-                                        self.write(&buf[..]).await?;
-                                    }
+                                self.write(b"N=").await?;
+                                self.write(&name).await?;
+                                self.write(computed_crc.as_bytes()).await?;
+                            }
+                            Cmd::SetAOut((volts1, volts2)) => {
+                                fn volts_to_dac(volts: f64) -> u16 {
+                                    // Convert voltage to fraction and clamp.
+                                    let frac = (volts / 4.096).clamp(0.0, 1.0);
+                                    // Compute integer DAC value.
+                                    let val: u16 = (frac * 4095.0).round() as u16;
+                                    val
                                 }
-                            } else {
-                                // no more commands, sender hung up
-                                info!("exiting run loop");
-                                return Ok(());
+                                let val1 = volts_to_dac(volts1);
+                                let val2 = volts_to_dac(volts2);
+
+                                self.write(b"O=").await?;
+                                self.write(&val1.to_le_bytes()).await?;
+                                self.write(&val2.to_le_bytes()).await?;
+                                self.write(b"x").await?;
+
+                                // Now wait for return value.
+                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+                                let mut buf = vec![0; 100];
+                                let len = self.ser.read(&mut buf).await?;
+                                let buf = &buf[..len];
+                                debug!("AOUT ignoring values: {:?}", buf);
+                            }
+                            Cmd::SetLedPulse(val) => {
+                                let buf = val.encode();
+                                self.write(&buf[..]).await?;
                             }
                         }
-                        Err(_elapsed) => {
-                            // timeout
-                            break;
-                        }
+                    } else {
+                        // no more commands, sender hung up
+                        info!("exiting run loop");
+                        return Ok(());
                     }
                 }
             }
