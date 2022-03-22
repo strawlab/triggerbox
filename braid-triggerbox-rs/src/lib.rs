@@ -255,28 +255,43 @@ impl TriggerboxDevice {
         }
 
         loop {
-            tokio::select! {
-                // TODO: what if we get a host command before the version check
-                // is done? Should we perhaps save it until the connection is
-                // established? Perhaps we should establish the version
-                // correctness in `Self::new()`?
-                opt_cmd_tup = self.outq.recv() => {
-                    if let Some(cmd) = opt_cmd_tup {
-                        self.handle_host_command(cmd).await?;
-                    } else {
-                        // no more commands, sender hung up
-                        info!("exiting run loop");
-                        return Ok(());
-                    }
-                },
-                res_r = self.ser.read(&mut read_buf) => {
-                    let n_bytes_read = res_r?;
-                    if n_bytes_read > 0 {
-                        update_read_buffer(n_bytes_read,&read_buf,&mut buf);
-                        new_data = true;
-                    }
-                },
-                _ = interval.tick() => {}
+            if self.version_check_done {
+                tokio::select! {
+                    // Handle command queue iff version check done.
+                    opt_cmd_tup = self.outq.recv() => {
+                        match opt_cmd_tup {
+                            Some(cmd) => {
+                                self.handle_host_command(cmd).await?;
+                            }
+                            None => {
+                                // no more commands, sender hung up
+                                info!("exiting run loop");
+                                return Ok(());
+                            }
+                        }
+                    },
+                    res_r = self.ser.read(&mut read_buf) => {
+                        let n_bytes_read = res_r?;
+                        if n_bytes_read > 0 {
+                            update_read_buffer(n_bytes_read,&read_buf,&mut buf);
+                            new_data = true;
+                        }
+                    },
+                    _ = interval.tick() => {}
+                }
+            } else {
+                // Same as above except `self.outq` is not checked. This is done
+                // at startup before the version number is confirmed.
+                tokio::select! {
+                    res_r = self.ser.read(&mut read_buf) => {
+                        let n_bytes_read = res_r?;
+                        if n_bytes_read > 0 {
+                            update_read_buffer(n_bytes_read,&read_buf,&mut buf);
+                            new_data = true;
+                        }
+                    },
+                    _ = interval.tick() => {}
+                }
             }
 
             // handle pending data, if any
