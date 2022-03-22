@@ -223,6 +223,9 @@ impl TriggerboxDevice {
     }
 
     /// Run forever, handling interaction with the triggerbox hardware device.
+    ///
+    /// Drop all instances of the `Sender<Cmd>` which could send messages to the
+    /// `Receiver<Cmd>` passed to [Self::new] to exit.
     pub async fn run_forever(
         mut self: TriggerboxDevice,
         query_dt: std::time::Duration,
