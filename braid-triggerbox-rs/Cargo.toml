@@ -11,7 +11,7 @@ rust-version = "1.58"
 thiserror = "1"
 anyhow = "1.0"
 tokio = {version="1.0.1", default-features=false, features=["sync","macros","time","io-util","rt-multi-thread"]}
-tokio-serial = "5.4.2"
+tokio-serial = "5.4.3"
 log = "0.4"
 byteorder = "1"
 serde = "1.0"
