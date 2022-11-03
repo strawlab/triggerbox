@@ -4,7 +4,7 @@ extern crate log;
 use braid_triggerbox::{make_trig_fps_cmd, name_display, to_name_type, Cmd};
 use braid_triggerbox_comms::LedInfo;
 
-use structopt::StructOpt;
+use clap::{Parser, ValueEnum};
 
 #[cfg(target_os = "macos")]
 const DEFAULT_DEVICE_PATH: &str = "/dev/tty.usbmodem1423";
@@ -15,12 +15,17 @@ const DEFAULT_DEVICE_PATH: &str = "/dev/ttyUSB0";
 #[cfg(target_os = "windows")]
 const DEFAULT_DEVICE_PATH: &str = r#"COM3"#;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "standalone-triggerbox-demo")]
-struct Opt {
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
     /// Filename of device
     #[structopt(long = "device", default_value = DEFAULT_DEVICE_PATH)]
     device: String,
+
+    /// RunMode
+    #[arg(long, value_enum, default_value_t = RunMode::FreeRun)]
+    run_mode: RunMode,
+
     /// Framerate
     #[structopt(long = "fps", default_value = "100")]
     fps: f64,
@@ -53,20 +58,34 @@ struct Opt {
     led_max_duty: Option<f32>,
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+enum RunMode {
+    FreeRun,
+    Stop,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
-    info!("braid_triggerbox starting");
-    let opt = Opt::from_args();
+    let opt = Cli::parse();
+    info!("braid_triggerbox starting. Run mode: {:?}", opt.run_mode);
 
     let mut quit_early = false;
 
     let (tx, rx) = tokio::sync::mpsc::channel(10);
 
     tx.send(Cmd::StopPulsesAndReset).await?;
-    let (rate_cmd, rate_actual) = make_trig_fps_cmd(opt.fps);
-    println!("Requested {} fps, using {} fps", opt.fps, rate_actual);
-    tx.send(rate_cmd).await?;
+    match &opt.run_mode {
+        RunMode::FreeRun => {
+            let (rate_cmd, rate_actual) = make_trig_fps_cmd(opt.fps);
+            println!("Requested {} fps, using {} fps", opt.fps, rate_actual);
+            tx.send(rate_cmd).await?;
+        }
+        RunMode::Stop => {
+            tx.send(Cmd::StopPulsesAndReset).await?;
+        }
+    }
+
     if let Some(set_device_name) = opt.set_device_name {
         let actual_name = to_name_type(&set_device_name)?;
         println!("Setting name to {}", name_display(&Some(actual_name)));

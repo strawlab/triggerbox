@@ -18,9 +18,9 @@ serde = "1.0"
 nalgebra = "0.31"
 chrono = "0.4"
 lstsq = "0.4"
-structopt = "0.3"
 env_logger = "0.9"
 crc = "3.0"
+clap = {version="4.0.10", features=["derive"]}
 
 braid-triggerbox-comms = {version="0.1", path="braid-triggerbox-comms"}
 
