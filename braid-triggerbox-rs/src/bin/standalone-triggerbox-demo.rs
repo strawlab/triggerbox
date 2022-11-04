@@ -124,7 +124,12 @@ async fn main() -> anyhow::Result<()> {
         .map(to_name_type)
         .transpose()?;
 
-    tx.send(Cmd::StartPulses).await?;
+    match &opt.run_mode {
+        RunMode::FreeRun => {
+            tx.send(Cmd::StartPulses).await?;
+        }
+        RunMode::Stop => {}
+    }
 
     let cb = Box::new(|tm| {
         println!("got new time model: {:?}", tm);
