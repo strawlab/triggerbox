@@ -8,7 +8,7 @@ extern crate core as std;
 
 pub const DEVICE_FIRMWARE_VERSION: u8 = 14;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub enum SyncVal {
     Sync0,
@@ -16,7 +16,7 @@ pub enum SyncVal {
     Sync2,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub struct TopAndPrescaler {
     avr_icr1: u16,
@@ -61,7 +61,7 @@ impl Prescaler {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub struct NewAOut {
     pub aout0: u16,
@@ -69,7 +69,7 @@ pub struct NewAOut {
     pub aout_sequence: u8,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub enum UdevMsg {
     Query,
@@ -157,7 +157,7 @@ impl LedInfo {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 struct AccumState {
     last_update: u64,
@@ -168,7 +168,7 @@ pub const BUF_MAX_SZ: usize = 32;
 /// Drop received data older than this (0.5 seconds).
 const MAX_AGE_USEC: u64 = 500_000;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub enum Error {
     AwaitingMoreData,
