@@ -29,8 +29,8 @@ mod app {
     use usb_device::{class_prelude::*, prelude::*};
     use usbd_serial::SerialPort;
 
+    use braid_triggerbox_comms::{PacketParser, SyncVal, UdevMsg, UsbEvent, BUF_MAX_SZ};
     use crc::{Crc, CRC_8_MAXIM_DOW};
-    use t2comms::{PacketParser, SyncVal, UdevMsg, UsbEvent};
 
     pub const Q_SZ: usize = 4;
 
@@ -46,7 +46,6 @@ mod app {
     const PICO_CLOCK: u64 = 125_000_000;
 
     static mut EVENT_QUEUE: Queue<UsbEvent, Q_SZ> = Queue::new();
-    const BUF_MAX_SZ: usize = t2comms::BUF_MAX_SZ;
     static mut PARSER_BACKING: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
 
     pub struct ClockScale {
@@ -282,7 +281,7 @@ mod app {
                 let now_usec = ctx.shared.timer.lock(|timer| timer.get_counter());
                 match ctx.local.packet_parser.got_buf(now_usec, &buf[..count]) {
                     Ok(ev) => ctx.local.event_tx.enqueue(ev).ok().unwrap(),
-                    Err(t2comms::Error::AwaitingMoreData) => {}
+                    Err(braid_triggerbox_comms::Error::AwaitingMoreData) => {}
                     Err(e) => warn!("error parsing: {}", e),
                 };
             }
@@ -370,22 +369,22 @@ mod app {
             UsbEvent::SetTop(val) => {
                 info!(
                     "Received TOP={}, prescaler_key='{}'",
-                    val.avr_icr1,
-                    core::str::from_utf8(&[val.prescaler_key][..]).unwrap_or("??")
+                    val.avr_icr1(),
+                    core::str::from_utf8(&[val.prescaler_key()][..]).unwrap_or("??")
                 );
 
-                let is_mode2 = match val.prescaler_key {
+                let is_mode2 = match val.prescaler_key() {
                     b'1' => false,
                     b'2' => true,
                     _ => {
                         panic!(
                             "Unsupported prescaler_key: '{}' {}",
-                            core::str::from_utf8(&[val.prescaler_key][..]).unwrap_or("??"),
-                            val.prescaler_key,
+                            core::str::from_utf8(&[val.prescaler_key()][..]).unwrap_or("??"),
+                            val.prescaler_key(),
                         );
                     }
                 };
-                let clock_scale = ClockScale::new(val.avr_icr1, is_mode2);
+                let clock_scale = ClockScale::new(val.avr_icr1(), is_mode2);
                 let top = clock_scale.to_top();
 
                 let duty0 = (top / 100).max(1);
