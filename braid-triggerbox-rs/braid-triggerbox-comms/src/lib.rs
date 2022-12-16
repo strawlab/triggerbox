@@ -149,10 +149,12 @@ impl<'bb> PacketParser<'bb> {
                 if (now_usec - old_accum_state.last_update) <= MAX_AGE {
                     old_accum_state.clone()
                 } else {
-                    match self.cons.read() {
-                        Ok(rgrant) => {
-                            let sz = rgrant.len();
-                            rgrant.release(sz);
+                    // data expired
+                    match self.cons.split_read() {
+                        Ok(grant) => {
+                            let bufs = grant.bufs();
+                            let sz = bufs.0.len() + bufs.1.len();
+                            grant.release(sz);
                         }
                         Err(bbqueue::Error::InsufficientSize) => { /*already empty*/ }
                         Err(e) => {
@@ -171,8 +173,14 @@ impl<'bb> PacketParser<'bb> {
 
         self.state = PState::Accumulating(accum_state);
 
-        let rgrant = self.cons.read().unwrap();
-        let buf = rgrant.buf();
+        // This is ugly and inefficient, but our tests pass.
+        let grant = self.cons.split_read().unwrap();
+        let bufs = grant.bufs();
+
+        let mut fullbuf = [0u8; BUF_MAX_SZ];
+        fullbuf[..bufs.0.len()].copy_from_slice(bufs.0);
+        fullbuf[bufs.0.len()..bufs.0.len() + bufs.1.len()].copy_from_slice(bufs.1);
+        let buf = &fullbuf[..bufs.0.len() + bufs.1.len()];
 
         let mut consumed_bytes = 0;
 
@@ -240,7 +248,7 @@ impl<'bb> PacketParser<'bb> {
             }
         }
 
-        rgrant.release(consumed_bytes);
+        grant.release(consumed_bytes);
         result
     }
 }
@@ -268,7 +276,7 @@ mod tests {
     }
 
     fn check_multiple(buf: &[u8], expected: &UsbEvent) {
-        // test 2 - old stale data present
+        // test 3 - multiple messages
         let bb: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
         let mut pp = PacketParser::new(&bb);
         let zero = Instant::from_ticks(0);
@@ -276,6 +284,32 @@ mod tests {
         let parsed = pp.got_buf(zero, buf);
         assert_eq!(parsed, Ok(expected.clone()));
         assert_eq!(Ok(UsbEvent::TimestampQuery(b'3')), pp.got_buf(zero, b"P3"));
+    }
+
+    fn check_many_partial_messages(buf: &[u8], expected: &UsbEvent) {
+        // test 4 - many partial messages
+        let bb: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
+        let mut pp = PacketParser::new(&bb);
+        let zero = Instant::from_ticks(0);
+        for sz in 1..10 {
+            for _ in 0..100 {
+                assert_eq!(Ok(UsbEvent::TimestampQuery(b'2')), pp.got_buf(zero, b"P2"));
+
+                let mut parsed = Err(Error::AwaitingMoreData);
+
+                let chunk_iter = buf.chunks(sz);
+                let mut n_sent = 0;
+                for chunk in chunk_iter {
+                    n_sent += chunk.len();
+                    parsed = pp.got_buf(zero, chunk);
+                    if n_sent < buf.len() {
+                        assert_eq!(parsed, Err(Error::AwaitingMoreData));
+                    }
+                }
+                assert_eq!(parsed, Ok(expected.clone()));
+                assert_eq!(Ok(UsbEvent::TimestampQuery(b'3')), pp.got_buf(zero, b"P3"));
+            }
+        }
     }
 
     #[test]
@@ -306,6 +340,7 @@ mod tests {
             check_simple(buf, &expected);
             check_stale(buf, &expected);
             check_multiple(buf, &expected);
+            check_many_partial_messages(buf, &expected);
         }
     }
 }
