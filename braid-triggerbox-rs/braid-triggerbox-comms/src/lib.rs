@@ -286,13 +286,23 @@ mod tests {
             (&b"S0"[..], UsbEvent::Sync(SyncVal::Sync0)),
             (&b"S1"[..], UsbEvent::Sync(SyncVal::Sync1)),
             (&b"S2"[..], UsbEvent::Sync(SyncVal::Sync2)),
-            /*
-            SetTop(TopAndPrescaler),
-            SetAOut(NewAOut),
-            Udev(UdevMsg),
-                    */
-        ][..]
-        {
+            (
+                &b"T=321"[..],
+                UsbEvent::SetTop(TopAndPrescaler::new_avr(
+                    ((b'2' as u16) << 8) | b'3' as u16,
+                    Prescaler::Scale8,
+                )),
+            ),
+            (
+                &b"O=54321"[..],
+                UsbEvent::SetAOut(NewAOut {
+                    aout0: ((b'4' as u16) << 8) | b'5' as u16,
+                    aout1: ((b'2' as u16) << 8) | b'3' as u16,
+                    aout_sequence: b'1',
+                }),
+            ),
+            (&b"N?"[..], UsbEvent::Udev(UdevMsg::Query)),
+        ] {
             check_simple(buf, &expected);
             check_stale(buf, &expected);
             check_multiple(buf, &expected);
