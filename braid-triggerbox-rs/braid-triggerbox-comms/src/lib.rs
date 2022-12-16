@@ -8,6 +8,9 @@ extern crate core as std;
 
 pub const DEVICE_FIRMWARE_VERSION: u8 = 14;
 
+type Instant = fugit::Instant<u64, 1, 1_000_000>;
+type Duration = fugit::Duration<u64, 1, 1_000_000>;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub enum SyncVal {
@@ -87,16 +90,24 @@ pub enum UsbEvent {
     Udev(UdevMsg),
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 struct AccumState {
-    last_update: u64,
+    last_update: Instant,
+}
+
+impl Default for AccumState {
+    fn default() -> Self {
+        Self {
+            last_update: Instant::from_ticks(0),
+        }
+    }
 }
 
 pub const BUF_MAX_SZ: usize = 32;
 
 /// Drop received data older than this (0.5 seconds).
-const MAX_AGE_USEC: u64 = 500_000;
+const MAX_AGE: Duration = Duration::from_ticks(500_000);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
@@ -131,11 +142,11 @@ impl<'bb> PacketParser<'bb> {
     }
 
     /// parse incoming data
-    pub fn got_buf(&mut self, now_usec: u64, buf: &[u8]) -> Result<UsbEvent, Error> {
+    pub fn got_buf(&mut self, now_usec: Instant, buf: &[u8]) -> Result<UsbEvent, Error> {
         let mut accum_state = match &self.state {
             PState::Empty => AccumState::default(),
             PState::Accumulating(old_accum_state) => {
-                if (now_usec - old_accum_state.last_update) <= MAX_AGE_USEC {
+                if (now_usec - old_accum_state.last_update) <= MAX_AGE {
                     old_accum_state.clone()
                 } else {
                     match self.cons.read() {
@@ -234,7 +245,6 @@ impl<'bb> PacketParser<'bb> {
     }
 }
 
-// Run with: cargo test --target x86_64-pc-windows-msvc --features std
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,7 +253,7 @@ mod tests {
         // test 1 - simple normal situation
         let bb: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
         let mut pp = PacketParser::new(&bb);
-        let parsed = pp.got_buf(0, buf);
+        let parsed = pp.got_buf(Instant::from_ticks(0), buf);
         assert_eq!(parsed, Ok(expected.clone()));
     }
 
@@ -251,8 +261,9 @@ mod tests {
         // test 2 - old stale data present
         let bb: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
         let mut pp = PacketParser::new(&bb);
-        pp.got_buf(0, b"P").ok();
-        let parsed = pp.got_buf(MAX_AGE_USEC + 1, buf);
+        let zero = Instant::from_ticks(0);
+        pp.got_buf(zero, b"P").ok();
+        let parsed = pp.got_buf(zero + MAX_AGE + Duration::from_ticks(1), buf);
         assert_eq!(parsed, Ok(expected.clone()));
     }
 
@@ -260,10 +271,11 @@ mod tests {
         // test 2 - old stale data present
         let bb: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
         let mut pp = PacketParser::new(&bb);
-        assert_eq!(Ok(UsbEvent::TimestampQuery(b'2')), pp.got_buf(0, b"P2"));
-        let parsed = pp.got_buf(0, buf);
+        let zero = Instant::from_ticks(0);
+        assert_eq!(Ok(UsbEvent::TimestampQuery(b'2')), pp.got_buf(zero, b"P2"));
+        let parsed = pp.got_buf(zero, buf);
         assert_eq!(parsed, Ok(expected.clone()));
-        assert_eq!(Ok(UsbEvent::TimestampQuery(b'3')), pp.got_buf(0, b"P3"));
+        assert_eq!(Ok(UsbEvent::TimestampQuery(b'3')), pp.got_buf(zero, b"P3"));
     }
 
     #[test]

@@ -7,19 +7,14 @@ use panic_probe as _;
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
     use embedded_hal::digital::v2::OutputPin;
-    use embedded_time::duration::Extensions;
-
-    // Time handling traits
-    use embedded_time::rate::*;
-    // Pull in any important traits
-    use rp_pico::hal::prelude::*;
 
     use heapless::spsc::{Consumer, Producer, Queue};
 
     use defmt::{debug, info, trace, warn};
     use rp_pico::{
         hal::{
-            self, clocks::init_clocks_and_plls, pwm::Slices, usb::UsbBus, watchdog::Watchdog, Sio,
+            self, clocks::init_clocks_and_plls, prelude::*, pwm::Slices, timer::Alarm, usb::UsbBus,
+            watchdog::Watchdog, Sio,
         },
         XOSC_CRYSTAL_FREQ,
     };
@@ -37,6 +32,8 @@ mod app {
     pub const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
 
     const SCAN_TIME_US: u32 = 1_000_000;
+    const SCAN_TIME: fugit::Duration<u32, 1, 1_000_000> =
+        fugit::Duration::<u32, 1, 1_000_000>::from_ticks(SCAN_TIME_US);
 
     // These are the clock frequencies on the original trigger device which we
     // want to emulate.
@@ -145,7 +142,7 @@ mod app {
         )
         .ok()
         .unwrap();
-        assert_eq!(clocks.system_clock.freq(), Hertz(PICO_CLOCK));
+        assert_eq!(clocks.system_clock.freq().to_Hz() as u64, PICO_CLOCK);
 
         let usb_bus = ctx.local.usb_bus;
         usb_bus.replace(UsbBusAllocator::new(UsbBus::new(
@@ -176,13 +173,12 @@ mod app {
 
         let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets);
         let mut alarm = timer.alarm_0().unwrap();
-        let _ = alarm.schedule(SCAN_TIME_US.microseconds());
-        alarm.enable_interrupt(&mut timer);
+        let _ = alarm.schedule(SCAN_TIME);
+        alarm.enable_interrupt();
 
         // The delay object lets us wait for specified amounts of time (in
         // milliseconds)
-        let mut _delay =
-            cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
+        let mut _delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
         // Init PWMs
         let mut pwm_slices = hal::pwm::Slices::new(ctx.device.PWM, &mut resets);
@@ -292,10 +288,9 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 1,
-        shared = [timer],
         local = [alarm, led, tog: bool = true],
     )]
-    fn timer_irq(mut ctx: timer_irq::Context) {
+    fn timer_irq(ctx: timer_irq::Context) {
         if *ctx.local.tog {
             ctx.local.led.set_high().unwrap();
         } else {
@@ -303,10 +298,8 @@ mod app {
         }
         *ctx.local.tog = !*ctx.local.tog;
 
-        ctx.shared.timer.lock(|timer| {
-            ctx.local.alarm.clear_interrupt(timer);
-        });
-        let _ = ctx.local.alarm.schedule(SCAN_TIME_US.microseconds());
+        ctx.local.alarm.clear_interrupt();
+        let _ = ctx.local.alarm.schedule(SCAN_TIME);
     }
 
     #[task(
