@@ -17,7 +17,7 @@ use tokio::{
     sync::mpsc::{Receiver, Sender},
 };
 
-use braid_triggerbox_comms::{LedInfo, Prescaler, TopAndPrescaler};
+use braid_triggerbox_comms::{Prescaler, TopAndPrescaler, DEVICE_FIRMWARE_VERSION};
 
 // ----- name type handling
 pub const DEVICE_NAME_LEN: usize = 8;
@@ -88,7 +88,6 @@ pub enum Cmd {
     StartPulses,
     SetDeviceName(InnerNameType),
     SetAOut((f64, f64)),
-    SetLedPulse(LedInfo),
 }
 
 impl TriggerboxDevice {
@@ -213,10 +212,6 @@ impl TriggerboxDevice {
                 let len = self.ser.read(&mut buf).await?;
                 let buf = &buf[..len];
                 debug!("AOUT ignoring values: {:?}", buf);
-            }
-            Cmd::SetLedPulse(val) => {
-                let buf = val.encode();
-                self.write(&buf[..]).await?;
             }
         }
         Ok(())
@@ -445,7 +440,7 @@ impl TriggerboxDevice {
 
     fn _handle_version(&mut self, value: u8, _pulsenumber: u32, _count: u16) -> Result<()> {
         trace!("got returned version with value: {}", value);
-        assert_eq!(value, braid_triggerbox_comms::DEVICE_FIRMWARE_VERSION);
+        assert_eq!(value, DEVICE_FIRMWARE_VERSION);
         self.vquery_time = chrono::Utc::now();
         self.version_check_done = true;
         info!("connected to triggerbox firmware version {}", value);

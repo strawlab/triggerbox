@@ -2,7 +2,6 @@
 extern crate log;
 
 use braid_triggerbox::{make_trig_fps_cmd, name_display, to_name_type, Cmd};
-use braid_triggerbox_comms::LedInfo;
 
 use clap::{Parser, ValueEnum};
 
@@ -44,18 +43,6 @@ struct Cli {
     /// Maximum acceptable measurement error (in milliseconds)
     #[structopt(long = "max-time-error-msec", default_value = "6")]
     max_acceptable_measurement_error: u64,
-
-    /// LED pulse duration (in microseconds)
-    #[structopt(long = "led-usec")]
-    led_usec: Option<u32>,
-
-    /// LED interval (in n frames). 0 means disabled.
-    #[structopt(long = "led-nth-frame")]
-    led_nth_frame: Option<u8>,
-
-    /// LED maximum duty (in fraction of total time). 1.0 means no limit.
-    #[structopt(long = "led-max-duty")]
-    led_max_duty: Option<f32>,
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -91,28 +78,6 @@ async fn main() -> anyhow::Result<()> {
         println!("Setting name to {}", name_display(&Some(actual_name)));
         tx.send(Cmd::SetDeviceName(actual_name)).await?;
         quit_early = true;
-    }
-
-    let mut led_info = LedInfo::default();
-    let mut send_led = false;
-
-    if let Some(led_usec) = opt.led_usec {
-        led_info.max_duration_usec = led_usec;
-        send_led = true;
-    }
-
-    if let Some(led_nth_frame) = opt.led_nth_frame {
-        led_info.nth_frame = led_nth_frame;
-        send_led = true;
-    }
-
-    if let Some(led_max_duty) = opt.led_max_duty {
-        led_info.max_overall_duty_cycle = led_max_duty;
-        send_led = true;
-    }
-
-    if send_led {
-        tx.send(Cmd::SetLedPulse(led_info)).await?;
     }
 
     tx.send(Cmd::SetAOut((opt.aout1, opt.aout2))).await?;

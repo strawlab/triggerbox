@@ -85,76 +85,6 @@ pub enum UsbEvent {
     SetTop(TopAndPrescaler),
     SetAOut(NewAOut),
     Udev(UdevMsg),
-    SetLed(LedInfo),
-}
-
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(not(feature = "std"), derive(Format))]
-pub struct LedInfo {
-    /// The duration the LED is on in each pulse (in microseceonds)
-    ///
-    /// This is the maximum value. Regardless of the value specified here, the
-    /// LED on time cannot be longer than the inter-frame interval. Furthermore,
-    /// it may also be limited by [Self::max_overall_duty_cycle].
-    pub max_duration_usec: u32,
-    /// The maximum fraction of time the LED is on
-    ///
-    /// This is a safety measure to reduce risk of destroying LEDs. When
-    /// overdriving LEDs, it may be that they should only be on for a fraction
-    /// of the time, e.g. 10% of the time. Setting this value to anything less
-    /// than 1.0 will limit the LED on time to a fraction of total time. The
-    /// [Self::nth_frame] field is taken into account within this computation.
-    pub max_overall_duty_cycle: f32,
-    /// What interval the LED is on
-    ///
-    /// 0: never
-    /// 1: every frame
-    /// 2: every second frame
-    /// 3: every third frame
-    /// 4: every fourth frame
-    pub nth_frame: u8,
-}
-
-impl Default for LedInfo {
-    fn default() -> Self {
-        Self {
-            max_duration_usec: 5_000,
-            max_overall_duty_cycle: 1.0,
-            nth_frame: 2,
-        }
-    }
-}
-
-const LED_MSG_BYTES: usize = 11;
-
-impl LedInfo {
-    #[cfg(feature = "std")]
-    pub fn encode(&self) -> [u8; LED_MSG_BYTES] {
-        let mut result: [u8; LED_MSG_BYTES] = [0; LED_MSG_BYTES];
-
-        result[0..2].copy_from_slice(b"L=");
-        result[2..6].copy_from_slice(&self.max_duration_usec.to_le_bytes());
-        result[6..10].copy_from_slice(&self.max_overall_duty_cycle.to_le_bytes());
-        result[10] = self.nth_frame;
-
-        result
-    }
-
-    pub fn raw_decode(buf: &[u8]) -> Result<LedInfo, Error> {
-        assert_eq!(buf.len(), LED_MSG_BYTES);
-        let arr = buf[2..6].try_into().unwrap();
-        let max_duration_usec = u32::from_le_bytes(arr);
-
-        let arr = buf[6..10].try_into().unwrap();
-        let max_overall_duty_cycle = f32::from_le_bytes(arr);
-
-        let nth_frame = buf[10];
-        Ok(LedInfo {
-            max_duration_usec,
-            max_overall_duty_cycle,
-            nth_frame,
-        })
-    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
@@ -270,14 +200,6 @@ impl<'bb> PacketParser<'bb> {
                     }));
                     consumed_bytes = 5;
                 }
-            } else if buf[0] == b'L' && buf[1] == b'=' {
-                if buf.len() < LED_MSG_BYTES {
-                    // wait for more data
-                } else {
-                    let x2 = LedInfo::raw_decode(&buf[..LED_MSG_BYTES]).unwrap();
-                    result = Ok(UsbEvent::SetLed(x2));
-                    consumed_bytes = LED_MSG_BYTES;
-                }
             } else if buf[0] == b'O' && buf[1] == b'=' {
                 if buf.len() < 7 {
                     // wait for more data
@@ -356,7 +278,6 @@ mod tests {
             SetTop(TopAndPrescaler),
             SetAOut(NewAOut),
             Udev(UdevMsg),
-            SetLed(LedInfo),
                     */
         ][..]
         {
@@ -364,13 +285,5 @@ mod tests {
             check_stale(buf, &expected);
             check_multiple(buf, &expected);
         }
-    }
-
-    #[test]
-    fn set_led_roundtrip() {
-        let x1 = LedInfo::default();
-        let buf = x1.encode();
-        let x2 = LedInfo::raw_decode(&buf[..]).unwrap();
-        assert_eq!(x1, x2);
     }
 }
