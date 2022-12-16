@@ -8,20 +8,10 @@ use tokio_serial::{SerialPort, SerialPortBuilderExt};
 pub const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
 
 async fn reset_device(device: &mut tokio_serial::SerialStream) -> Result<()> {
-    device.write_request_to_send(false)?;
     device.write_data_terminal_ready(false)?;
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    device.write_request_to_send(true)?;
     device.write_data_terminal_ready(true)?;
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    Ok(())
-}
-
-async fn flush_device<W: tokio::io::AsyncWriteExt + std::marker::Unpin>(ser: &mut W) -> Result<()> {
-    for _ in 0..5 {
-        ser.flush().await?;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
     Ok(())
 }
 
@@ -81,10 +71,8 @@ pub async fn serial_handshake(
 
     debug!("Resetting port {}", serial_device);
     reset_device(&mut ser).await?;
-    debug!("Sleeping 10 seconds. (This is required for Arduino Nano to reset.)");
-    tokio::time::sleep(std::time::Duration::from_millis(10_000)).await;
-    debug!("Flushing serial port");
-    flush_device(&mut ser).await?;
+    debug!("Sleeping 7 seconds. (This is required for Arduino Nano to reset.)");
+    tokio::time::sleep(std::time::Duration::from_millis(7_000)).await;
     debug!("Getting device name");
     let name = get_device_name(&mut ser)
         .await
