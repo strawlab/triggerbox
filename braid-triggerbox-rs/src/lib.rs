@@ -98,6 +98,7 @@ impl TriggerboxDevice {
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
         assert_device_name: NameType,
         max_acceptable_measurement_error: std::time::Duration,
+        sleep_dur: std::time::Duration,
     ) -> Result<Self> {
         let baud_rate = 115_200;
         let max_acceptable_measurement_error =
@@ -111,7 +112,7 @@ impl TriggerboxDevice {
 
         let (ser, name) = match tokio::time::timeout(
             std::time::Duration::from_millis(15_000),
-            serial_handshake(&device_path, baud_rate),
+            serial_handshake(&device_path, baud_rate, sleep_dur),
         )
         .await
         {
@@ -536,15 +537,29 @@ fn test_fit_time_model() {
     assert!((offset - 12.0).abs() < epsilon);
 }
 
+#[derive(Clone, Debug)]
+pub struct TriggerboxOptions {
+    pub device_path: String,
+    pub query_dt: std::time::Duration,
+    pub assert_device_name: NameType,
+    pub max_acceptable_measurement_error: std::time::Duration,
+    pub sleep_dur: std::time::Duration,
+}
+
 pub async fn run_triggerbox(
     on_new_model_cb: ClockModelCallback,
-    device_path: String,
     outq: Receiver<Cmd>,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
-    query_dt: std::time::Duration,
-    assert_device_name: NameType,
-    max_acceptable_measurement_error: std::time::Duration,
+    opts: TriggerboxOptions,
 ) -> Result<()> {
+    let TriggerboxOptions {
+        device_path,
+        query_dt,
+        assert_device_name,
+        max_acceptable_measurement_error,
+        sleep_dur,
+    } = opts;
+
     let triggerbox = TriggerboxDevice::new(
         on_new_model_cb,
         device_path,
@@ -552,6 +567,7 @@ pub async fn run_triggerbox(
         triggerbox_data_tx,
         assert_device_name,
         max_acceptable_measurement_error,
+        sleep_dur,
     )
     .await?;
     triggerbox.run_forever(query_dt).await

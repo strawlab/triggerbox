@@ -61,6 +61,7 @@ async fn get_device_name(
 pub async fn serial_handshake(
     serial_device: &str,
     baud_rate: u32,
+    sleep_dur: std::time::Duration,
 ) -> Result<(tokio_serial::SerialStream, NameType)> {
     #[allow(unused_mut)]
     let mut ser = tokio_serial::new(serial_device, baud_rate).open_native_async()?;
@@ -71,8 +72,11 @@ pub async fn serial_handshake(
 
     debug!("Resetting port {}", serial_device);
     reset_device(&mut ser).await?;
-    debug!("Sleeping 7 seconds. (This is required for Arduino Nano to reset.)");
-    tokio::time::sleep(std::time::Duration::from_millis(7_000)).await;
+    debug!(
+        "Sleeping {:.1} seconds. (This is required for Arduino Nano to reset.)",
+        sleep_dur.as_secs_f32()
+    );
+    tokio::time::sleep(sleep_dur).await;
     debug!("Getting device name");
     let name = get_device_name(&mut ser)
         .await

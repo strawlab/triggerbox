@@ -43,6 +43,12 @@ struct Cli {
     /// Maximum acceptable measurement error (in milliseconds)
     #[structopt(long = "max-time-error-msec", default_value = "6")]
     max_acceptable_measurement_error: u64,
+
+    /// Sleep duration to allow device to wake up (in seconds)
+    ///
+    /// Emperically, an Arduino Nano requires 7 seconds to wake up.
+    #[arg(long, default_value_t = 7.0)]
+    sleep: f32,
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -110,16 +116,17 @@ async fn main() -> anyhow::Result<()> {
         println!("Should quit early, but cannot");
     }
 
-    braid_triggerbox::run_triggerbox(
-        cb,
-        opt.device,
-        rx,
-        None,
+    let sleep_dur = std::time::Duration::from_secs_f32(opt.sleep);
+
+    let opts = braid_triggerbox::TriggerboxOptions {
+        device_path: opt.device,
         query_dt,
         assert_device_name,
         max_acceptable_measurement_error,
-    )
-    .await?;
+        sleep_dur,
+    };
+
+    braid_triggerbox::run_triggerbox(cb, rx, None, opts).await?;
 
     Ok(())
 }

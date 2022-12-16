@@ -79,7 +79,7 @@ pub enum UdevMsg {
     Set([u8; 8]),
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]
 pub enum UsbEvent {
     TimestampQuery(u8),
