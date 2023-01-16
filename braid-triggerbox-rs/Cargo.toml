@@ -15,7 +15,7 @@ tokio-serial = "5.4.3"
 log = "0.4"
 byteorder = "1"
 serde = "1.0"
-nalgebra = "0.31"
+nalgebra = "0.32"
 chrono = {version="0.4.23", default-features=false, features=["clock", "std", "wasmbind"]}
 lstsq = "0.4"
 env_logger = "0.10"
