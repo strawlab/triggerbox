@@ -509,8 +509,8 @@ fn fit_time_model(past_data: &[(f64, f64)]) -> Result<(f64, f64, f64), &'static 
         a.push(1.0);
         b.push(row.1);
     }
-    let a = OMatrix::<f64, na::Dynamic, U2>::from_row_slice(&a);
-    let b = OVector::<f64, na::Dynamic>::from_row_slice(&b);
+    let a = OMatrix::<f64, na::Dyn, U2>::from_row_slice(&a);
+    let b = OVector::<f64, na::Dyn>::from_row_slice(&b);
 
     let epsilon = 1e-10;
     let results = lstsq::lstsq(&a, &b, epsilon)?;
