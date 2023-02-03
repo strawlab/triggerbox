@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let cb = Box::new(|tm| {
-        println!("got new time model: {:?}", tm);
+        println!("got new time model: {tm:?}");
     });
 
     let query_dt = std::time::Duration::from_secs(1);

@@ -119,7 +119,7 @@ impl TriggerboxDevice {
             Ok(r) => r,
             Err(elapsed) => Err(elapsed).map_err(anyhow::Error::from),
         }
-        .with_context(|| format!("opening device {}", device_path))?;
+        .with_context(|| format!("opening device {device_path}"))?;
 
         if let Some(name) = &name {
             let name_str = String::from_utf8_lossy(name);
