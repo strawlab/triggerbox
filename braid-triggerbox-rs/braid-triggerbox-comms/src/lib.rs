@@ -158,7 +158,7 @@ impl<'bb> PacketParser<'bb> {
                         }
                         Err(bbqueue::Error::InsufficientSize) => { /*already empty*/ }
                         Err(e) => {
-                            panic!("error: {:?}", e);
+                            panic!("error: {e:?}");
                         }
                     }
                     AccumState::default()
