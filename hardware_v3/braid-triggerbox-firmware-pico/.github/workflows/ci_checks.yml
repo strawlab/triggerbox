@@ -27,7 +27,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update
       - run: cargo install flip-link
       - run: rustup target install --toolchain=${{ matrix.toolchain }} thumbv6m-none-eabi
@@ -37,7 +37,7 @@ jobs:
     name: Linting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update --component clippy
@@ -47,7 +47,7 @@ jobs:
     name: Formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
       - run: |

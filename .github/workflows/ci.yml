@@ -18,7 +18,7 @@ jobs:
         runs-on: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v3
       - uses: arduino/setup-arduino-cli@v1.1.2
       - name: Install platform
         run: |
@@ -36,7 +36,7 @@ jobs:
       run:
         working-directory: braid-triggerbox-rs
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install update apt repos
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
@@ -60,7 +60,7 @@ jobs:
       run:
         working-directory: hardware_v3/braid-triggerbox-firmware-pico
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install update apt repos
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
