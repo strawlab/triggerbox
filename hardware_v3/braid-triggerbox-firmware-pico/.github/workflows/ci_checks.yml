@@ -12,7 +12,9 @@ jobs:
     strategy:
       matrix:
         # All generated code should be running on stable now
-        rust: [nightly, stable]
+        toolchain:
+          - stable
+          - nightly
         include:
           # Nightly is only for reference and allowed to fail
           - rust: nightly
@@ -26,13 +28,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update
       - run: cargo install flip-link
-      - run: rustup target install --toolchain=${{ matrix.rust }} thumbv6m-none-eabi
+      - run: rustup target install --toolchain=${{ matrix.toolchain }} thumbv6m-none-eabi
       - run: cargo build --all
       - run: cargo build --all --release
   linting:
@@ -42,15 +40,9 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: true
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update --component clippy
       - run: rustup target install thumbv6m-none-eabi
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features -- -D warnings
+      - run: cargo clippy --all-features -- -D warnings
   formatting:
     name: Formatting
     runs-on: ubuntu-latest
@@ -58,9 +50,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: true
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: rustfmt
+      - run: |
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update --component rustfmt
       - run: rustup target install thumbv6m-none-eabi
       - run: cargo fmt -- --check
