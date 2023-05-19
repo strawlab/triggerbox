@@ -18,8 +18,8 @@ jobs:
         runs-on: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@master
-      - uses: arduino/setup-arduino-cli@v1.1.1
+      - uses: actions/checkout@v3
+      - uses: arduino/setup-arduino-cli@v1.1.2
       - name: Install platform
         run: |
           arduino-cli core update-index
@@ -36,7 +36,7 @@ jobs:
       run:
         working-directory: braid-triggerbox-rs
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install update apt repos
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
@@ -60,20 +60,18 @@ jobs:
       run:
         working-directory: hardware_v3/braid-triggerbox-firmware-pico
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install update apt repos
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
+        run: rustup toolchain install stable --profile minimal --no-self-update
       - name: Install thumbv6m-none-eabi target
         run: rustup target install thumbv6m-none-eabi
       - name: Install flip-link
         run: cargo install flip-link
       - name: Install elf2uf2-rs
-        run: cargo install elf2uf2-rs --locked
+        run: cargo install --git https://github.com/strawlab/elf2uf2-rs
       - name: Build ELF
         run: cargo build --release
       - name: Make artifacts directory
