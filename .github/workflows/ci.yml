@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@master
-      - uses: arduino/setup-arduino-cli@v1.1.1
+      - uses: arduino/setup-arduino-cli@v1.1.2
       - name: Install platform
         run: |
           arduino-cli core update-index
