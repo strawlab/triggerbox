@@ -1,9 +1,11 @@
 [package]
 name = "braid-triggerbox"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Andrew Straw <strawman@astraw.com>"]
 license = "MIT/Apache-2.0"
 description = "camera synchronization trigger box for Braid"
+repository = "https://github.com/strawlab/triggerbox"
+homepage = "https://github.com/strawlab/triggerbox/tree/main/braid-triggerbox-rs"
 edition = "2021"
 rust-version = "1.58"
 
