@@ -85,9 +85,14 @@ pub struct EmulatedNanoPwmClock {
 }
 
 impl EmulatedNanoPwmClock {
-    pub fn new(orig_top: u16, is_mode2: bool, system_clock_freq_hz: u64) -> Result<Self, ()> {
+    pub fn new(
+        orig_top: u16,
+        is_mode2: bool,
+        system_clock_freq_hz: u64,
+    ) -> Result<Self, &'static str> {
+        const UNSUPPORTED_CLOCK: &str = "unsupported clock";
         if system_clock_freq_hz != 125_000_000 {
-            return Err(());
+            return Err(UNSUPPORTED_CLOCK);
         }
         // These are the clock frequencies on the original trigger device which we
         // want to emulate.
