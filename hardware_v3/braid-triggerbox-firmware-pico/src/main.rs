@@ -130,7 +130,7 @@ mod app {
             let pwm0 = &mut pwm_slices.pwm0;
             pwm0.default_config();
 
-            pwm0.set_div_int(clock_scale.div_int); // To set integer part of clock divider
+            pwm0.set_div_int(clock_scale.div_int()); // To set integer part of clock divider
             pwm0.set_div_frac(0); // No fractional part of clock divider
             let top = clock_scale.to_top();
             pwm0.set_top(top);
@@ -326,7 +326,7 @@ mod app {
 
                 let duty0 = (top / 100).max(1);
                 let led_duty = (duty0 * 2).min(top - 1);
-                let div_int = new_clock_scale.div_int;
+                let div_int = new_clock_scale.div_int();
                 *ctx.local.clock_scale = new_clock_scale;
 
                 ctx.shared.pwm_slices.lock(|pwm_slices| {

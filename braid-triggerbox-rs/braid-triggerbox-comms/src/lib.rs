@@ -77,8 +77,8 @@ const EMULATE_CLOCK_MODE2: u64 = 250_000;
 
 /// Helper to calculate emulated Arduino Nano PWM clock.
 pub struct EmulatedNanoPwmClock {
-    /// The Pico clock divisor.
-    pub div_int: u8,
+    /// The clock divisor.
+    div_int: u8,
     /// The original (Nano) PWM top value.
     orig_top: u16,
     /// The relative counter tick of the Pico vs Nano.
@@ -123,6 +123,10 @@ impl EmulatedNanoPwmClock {
         );
 
         result
+    }
+
+    pub fn div_int(&self) -> u8 {
+        self.div_int
     }
 
     pub fn system_clock_freq_hz(&self) -> u64 {
