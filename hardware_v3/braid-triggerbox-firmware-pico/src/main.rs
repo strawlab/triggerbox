@@ -152,16 +152,16 @@ mod app {
 
         let (event_tx, event_rx) = unsafe { EVENT_QUEUE.split() };
 
-        assert_eq!(hexchar(0x00), b'0');
-        assert_eq!(hexchar(0x01), b'1');
-        assert_eq!(hexchar(0x02), b'2');
-        assert_eq!(hexchar(0x0A), b'A');
-        assert_eq!(hexchar(0x0F), b'F');
-        assert_eq!(hexchar(0x10), b'0');
-        assert_eq!(hexchar(0x11), b'1');
-        assert_eq!(hexchar(0x12), b'2');
-        assert_eq!(hexchar(0x1A), b'A');
-        assert_eq!(hexchar(0x1F), b'F');
+        static_assertions::const_assert_eq!(hexchar(0x00), b'0');
+        static_assertions::const_assert_eq!(hexchar(0x01), b'1');
+        static_assertions::const_assert_eq!(hexchar(0x02), b'2');
+        static_assertions::const_assert_eq!(hexchar(0x0A), b'A');
+        static_assertions::const_assert_eq!(hexchar(0x0F), b'F');
+        static_assertions::const_assert_eq!(hexchar(0x10), b'0');
+        static_assertions::const_assert_eq!(hexchar(0x11), b'1');
+        static_assertions::const_assert_eq!(hexchar(0x12), b'2');
+        static_assertions::const_assert_eq!(hexchar(0x1A), b'A');
+        static_assertions::const_assert_eq!(hexchar(0x1F), b'F');
 
         (
             Shared {
@@ -440,7 +440,7 @@ mod app {
         assert_eq!(nbytes, out_buf.len());
     }
 
-    fn hexchar(inchar: u8) -> u8 {
+    const fn hexchar(inchar: u8) -> u8 {
         let lower_4_bits = inchar & 0x0F;
         if lower_4_bits < 0x0A {
             lower_4_bits + b'0'
