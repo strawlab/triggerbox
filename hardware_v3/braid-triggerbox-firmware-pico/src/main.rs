@@ -123,7 +123,8 @@ mod app {
         let mut pwm_slices = hal::pwm::Slices::new(ctx.device.PWM, &mut resets);
 
         let clock_scale =
-            EmulatedNanoPwmClock::new(50_000, false, clocks.system_clock.freq().to_Hz() as u64);
+            EmulatedNanoPwmClock::new(50_000, false, clocks.system_clock.freq().to_Hz() as u64)
+                .unwrap();
 
         {
             // Configure PWM0
@@ -321,7 +322,8 @@ mod app {
                     val.avr_icr1(),
                     is_mode2,
                     ctx.local.clock_scale.system_clock_freq_hz(),
-                );
+                )
+                .unwrap();
                 let top = new_clock_scale.to_top();
 
                 let duty0 = (top / 100).max(1);

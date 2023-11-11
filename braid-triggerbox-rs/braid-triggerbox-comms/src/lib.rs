@@ -70,11 +70,6 @@ impl Prescaler {
     }
 }
 
-// These are the clock frequencies on the original trigger device which we
-// want to emulate.
-const EMULATE_CLOCK_MODE1: u64 = 2_000_000;
-const EMULATE_CLOCK_MODE2: u64 = 250_000;
-
 /// Helper to calculate emulated Arduino Nano PWM clock.
 pub struct EmulatedNanoPwmClock {
     /// The clock divisor.
@@ -90,7 +85,15 @@ pub struct EmulatedNanoPwmClock {
 }
 
 impl EmulatedNanoPwmClock {
-    pub fn new(orig_top: u16, is_mode2: bool, system_clock_freq_hz: u64) -> Self {
+    pub fn new(orig_top: u16, is_mode2: bool, system_clock_freq_hz: u64) -> Result<Self, ()> {
+        if system_clock_freq_hz != 125_000_000 {
+            return Err(());
+        }
+        // These are the clock frequencies on the original trigger device which we
+        // want to emulate.
+        const EMULATE_CLOCK_MODE1: u64 = 2_000_000;
+        const EMULATE_CLOCK_MODE2: u64 = 250_000;
+
         let (div_int, emulate_clock) = if is_mode2 {
             (255, EMULATE_CLOCK_MODE2)
         } else {
@@ -122,7 +125,7 @@ impl EmulatedNanoPwmClock {
             pwm_clock,
         );
 
-        result
+        Ok(result)
     }
 
     pub fn div_int(&self) -> u8 {
