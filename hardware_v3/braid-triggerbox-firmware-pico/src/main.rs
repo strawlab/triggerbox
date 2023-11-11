@@ -257,16 +257,16 @@ mod app {
         });
     }
 
-    fn handle_event(mut ctx: &mut idle::Context, event: UsbEvent) {
+    fn handle_event(ctx: &mut idle::Context, event: UsbEvent) {
         debug!("handling event: {:?}", event);
         use rtic::{mutex_prelude::TupleExt02, Mutex};
         match event {
             UsbEvent::TimestampQuery(value) => {
-                let timestamp_request = fill_sample(value, &mut ctx);
-                send_data(&timestamp_request, b'P', &mut ctx);
+                let timestamp_request = fill_sample(value, ctx);
+                send_data(&timestamp_request, b'P', ctx);
             }
             UsbEvent::VersionRequest => {
-                send_data(&fill_sample(14, &mut ctx), b'V', &mut ctx);
+                send_data(&fill_sample(14, ctx), b'V', ctx);
             }
             UsbEvent::Sync(val) => {
                 match val {
@@ -343,8 +343,8 @@ mod app {
                 // AOUT values
                 info!("ignoring AOUT command {}, {}", val.aout0, val.aout1);
 
-                let aout_confirm = fill_sample(val.aout_sequence, &mut ctx);
-                send_data(&aout_confirm, b'V', &mut ctx);
+                let aout_confirm = fill_sample(val.aout_sequence, ctx);
+                send_data(&aout_confirm, b'V', ctx);
             }
             UsbEvent::Udev(val) => {
                 match val {
@@ -361,7 +361,7 @@ mod app {
                             out_buf[8] = hexchar(crc);
                             9
                         };
-                        send_buf(&mut ctx, &out_buf[..send_len]);
+                        send_buf(ctx, &out_buf[..send_len]);
                     }
                     UdevMsg::Set(_) => {
                         todo!();
@@ -385,8 +385,8 @@ mod app {
         fn to_buf(&self, buf: &mut [u8]) {
             assert_eq!(buf.len(), 7);
             buf[0] = self.value;
-            (&mut buf[1..5]).copy_from_slice(&self.pulsenumber.to_le_bytes());
-            (&mut buf[5..7]).copy_from_slice(&self.ticks.to_le_bytes());
+            buf[1..5].copy_from_slice(&self.pulsenumber.to_le_bytes());
+            buf[5..7].copy_from_slice(&self.ticks.to_le_bytes());
         }
     }
 
