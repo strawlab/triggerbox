@@ -133,10 +133,12 @@ impl EmulatedNanoPwmClock {
         Ok(result)
     }
 
+    /// get integer part of clock divider
     pub fn div_int(&self) -> u8 {
         self.div_int
     }
 
+    /// get system clock frequency (in Hz)
     pub fn system_clock_freq_hz(&self) -> u64 {
         self.system_clock_freq_hz
     }
