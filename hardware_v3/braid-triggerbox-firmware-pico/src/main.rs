@@ -24,7 +24,9 @@ mod app {
     use usb_device::{class_prelude::*, prelude::*};
     use usbd_serial::SerialPort;
 
-    use braid_triggerbox_comms::{PacketParser, SyncVal, UdevMsg, UsbEvent, BUF_MAX_SZ};
+    use braid_triggerbox_comms::{
+        PacketParser, RPiPicoClockScale, SyncVal, UdevMsg, UsbEvent, BUF_MAX_SZ,
+    };
     use crc::{Crc, CRC_8_MAXIM_DOW};
 
     pub const Q_SZ: usize = 4;
@@ -35,75 +37,8 @@ mod app {
     const SCAN_TIME: fugit::Duration<u32, 1, 1_000_000> =
         fugit::Duration::<u32, 1, 1_000_000>::from_ticks(SCAN_TIME_US);
 
-    // These are the clock frequencies on the original trigger device which we
-    // want to emulate.
-    const EMULATE_CLOCK_MODE1: u64 = 2_000_000;
-    const EMULATE_CLOCK_MODE2: u64 = 250_000;
-
-    const PICO_CLOCK: u64 = 125_000_000;
-
     static mut EVENT_QUEUE: Queue<UsbEvent, Q_SZ> = Queue::new();
     static mut PARSER_BACKING: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
-
-    pub struct ClockScale {
-        /// The Pico clock divisor.
-        div_int: u8,
-        /// The original (Nano) PWM top value.
-        orig_top: u16,
-        /// The relative counter tick of the Pico vs Nano.
-        clock_gain: f64,
-        /// The actual top value.
-        actual_top: u16,
-    }
-
-    impl ClockScale {
-        fn new(orig_top: u16, is_mode2: bool) -> Self {
-            let (div_int, emulate_clock) = if is_mode2 {
-                (255, EMULATE_CLOCK_MODE2)
-            } else {
-                (62, EMULATE_CLOCK_MODE1)
-            };
-
-            let pwm_clock = PICO_CLOCK as f64 / div_int as f64;
-
-            let clock_gain = emulate_clock as f64 / pwm_clock; // * div_int as f64 / PICO_CLOCK as f64;
-
-            let new_top_f64 = orig_top as f64 / clock_gain;
-            let actual_top = new_top_f64 as u16 - 1;
-
-            let result = Self {
-                div_int,
-                orig_top,
-                clock_gain,
-                actual_top,
-            };
-
-            info!(
-                "PWM orig_top: {}, to_top: {}, clock_gain: {}, emulate_clock: {}, div_int: {}, pwm_clock: {}",
-                result.orig_top,
-                result.to_top(),
-                result.clock_gain,
-                emulate_clock,
-                result.div_int,
-                pwm_clock,
-            );
-
-            result
-        }
-
-        /// best effort to convert top value
-        fn to_top(&self) -> u16 {
-            self.actual_top
-        }
-
-        /// convert real ticks to scaled ticks
-        fn scale_ticks(&self, ticks_real: u16) -> u16 {
-            let ticks_scaled = (ticks_real as f64 * self.clock_gain) as u16;
-            // Due to rounding error, it is conceivable that we could exceed the
-            // original top value. Here we ensure this is not possible.
-            ticks_scaled.min(self.orig_top)
-        }
-    }
 
     #[shared]
     struct Shared {
@@ -122,7 +57,7 @@ mod app {
         event_rx: Consumer<'static, UsbEvent, Q_SZ>,
         pwm_cycle: u8,
         /// A cached copy of what our PWM clock is doing.
-        clock_scale: ClockScale,
+        clock_scale: RPiPicoClockScale,
     }
 
     #[init(local = [usb_bus: Option<UsbBusAllocator<UsbBus>> = None])]
@@ -142,7 +77,10 @@ mod app {
         )
         .ok()
         .unwrap();
-        assert_eq!(clocks.system_clock.freq().to_Hz() as u64, PICO_CLOCK);
+        assert_eq!(
+            clocks.system_clock.freq().to_Hz() as u64,
+            RPiPicoClockScale::freq_hz(),
+        );
 
         let usb_bus = ctx.local.usb_bus;
         usb_bus.replace(UsbBusAllocator::new(UsbBus::new(
@@ -183,7 +121,7 @@ mod app {
         // Init PWMs
         let mut pwm_slices = hal::pwm::Slices::new(ctx.device.PWM, &mut resets);
 
-        let clock_scale = ClockScale::new(50_000, false);
+        let clock_scale = RPiPicoClockScale::new(50_000, false);
 
         {
             // Configure PWM0
@@ -377,7 +315,7 @@ mod app {
                         );
                     }
                 };
-                let clock_scale = ClockScale::new(val.avr_icr1(), is_mode2);
+                let clock_scale = RPiPicoClockScale::new(val.avr_icr1(), is_mode2);
                 let top = clock_scale.to_top();
 
                 let duty0 = (top / 100).max(1);

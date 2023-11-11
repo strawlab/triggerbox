@@ -28,4 +28,4 @@ heapless = "0.7.10"
 bbqueue = {version="0.5.1", features=["thumbv6"]}
 fugit = { version = "0.3.6", features = ["defmt"] }
 
-braid-triggerbox-comms = {path="../../braid-triggerbox-rs/braid-triggerbox-comms", default-features=false, features=["thumbv6"]}
+braid-triggerbox-comms = {path="../../braid-triggerbox-rs/braid-triggerbox-comms", default-features=false, features=["thumbv6", "defmt"]}

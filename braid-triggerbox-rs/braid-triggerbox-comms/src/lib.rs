@@ -4,6 +4,12 @@
 use defmt::Format;
 
 #[cfg(not(feature = "std"))]
+use defmt::info;
+
+#[cfg(feature = "std")]
+use log::info;
+
+#[cfg(not(feature = "std"))]
 extern crate core as std;
 
 pub const DEVICE_FIRMWARE_VERSION: u8 = 14;
@@ -61,6 +67,78 @@ impl Prescaler {
             Prescaler::Scale8 => 8.0,
             Prescaler::Scale64 => 64.0,
         }
+    }
+}
+
+// These are the clock frequencies on the original trigger device which we
+// want to emulate.
+const EMULATE_CLOCK_MODE1: u64 = 2_000_000;
+const EMULATE_CLOCK_MODE2: u64 = 250_000;
+// This is the clock frequency of the Pico.
+const PICO_CLOCK: u64 = 125_000_000;
+
+/// Helper to calculate PWM clocks in Raspberry Pi Pico to emulate Arduino Nano.
+pub struct RPiPicoClockScale {
+    /// The Pico clock divisor.
+    pub div_int: u8,
+    /// The original (Nano) PWM top value.
+    orig_top: u16,
+    /// The relative counter tick of the Pico vs Nano.
+    clock_gain: f64,
+    /// The actual top value.
+    actual_top: u16,
+}
+
+impl RPiPicoClockScale {
+    pub const fn freq_hz() -> u64 {
+        PICO_CLOCK
+    }
+
+    pub fn new(orig_top: u16, is_mode2: bool) -> Self {
+        let (div_int, emulate_clock) = if is_mode2 {
+            (255, EMULATE_CLOCK_MODE2)
+        } else {
+            (62, EMULATE_CLOCK_MODE1)
+        };
+
+        let pwm_clock = PICO_CLOCK as f64 / div_int as f64;
+
+        let clock_gain = emulate_clock as f64 / pwm_clock; // * div_int as f64 / PICO_CLOCK as f64;
+
+        let new_top_f64 = orig_top as f64 / clock_gain;
+        let actual_top = new_top_f64 as u16 - 1;
+
+        let result = Self {
+            div_int,
+            orig_top,
+            clock_gain,
+            actual_top,
+        };
+
+        info!(
+            "PWM orig_top: {}, to_top: {}, clock_gain: {}, emulate_clock: {}, div_int: {}, pwm_clock: {}",
+            result.orig_top,
+            result.to_top(),
+            result.clock_gain,
+            emulate_clock,
+            result.div_int,
+            pwm_clock,
+        );
+
+        result
+    }
+
+    /// best effort to convert top value
+    pub fn to_top(&self) -> u16 {
+        self.actual_top
+    }
+
+    /// convert real ticks to scaled ticks
+    pub fn scale_ticks(&self, ticks_real: u16) -> u16 {
+        let ticks_scaled = (ticks_real as f64 * self.clock_gain) as u16;
+        // Due to rounding error, it is conceivable that we could exceed the
+        // original top value. Here we ensure this is not possible.
+        ticks_scaled.min(self.orig_top)
     }
 }
 
