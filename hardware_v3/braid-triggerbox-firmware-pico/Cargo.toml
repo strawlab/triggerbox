@@ -22,7 +22,7 @@ usbd-serial = "0.1.1"
 
 crc = "3.0.0"
 
-rp-pico = "0.6.0"
+rp-pico = "0.8.0"
 
 heapless = "0.8.0"
 bbqueue = {version="0.5.1", features=["thumbv6"]}

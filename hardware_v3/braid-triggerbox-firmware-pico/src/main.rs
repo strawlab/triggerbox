@@ -50,7 +50,11 @@ mod app {
     #[local]
     struct Local {
         alarm: hal::timer::Alarm0,
-        led: hal::gpio::Pin<hal::gpio::pin::bank0::Gpio25, hal::gpio::PushPullOutput>,
+        led: hal::gpio::Pin<
+            hal::gpio::bank0::Gpio25,
+            hal::gpio::FunctionSioOutput,
+            hal::gpio::PullNone,
+        >,
         usb_dev: UsbDevice<'static, UsbBus>,
         packet_parser: PacketParser<'static>,
         event_tx: Producer<'static, UsbEvent, Q_SZ>,
@@ -82,6 +86,8 @@ mod app {
             RPiPicoClockScale::freq_hz(),
         );
 
+        let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets, &clocks);
+
         let usb_bus = ctx.local.usb_bus;
         usb_bus.replace(UsbBusAllocator::new(UsbBus::new(
             ctx.device.USBCTRL_REGS,
@@ -106,10 +112,9 @@ mod app {
             sio.gpio_bank0,
             &mut resets,
         );
-        let mut led = pins.led.into_push_pull_output();
+        let mut led = pins.led.reconfigure();
         led.set_low().unwrap();
 
-        let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets);
         let mut alarm = timer.alarm_0().unwrap();
         let _ = alarm.schedule(SCAN_TIME);
         alarm.enable_interrupt();
