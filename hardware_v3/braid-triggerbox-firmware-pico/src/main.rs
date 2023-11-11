@@ -81,10 +81,6 @@ mod app {
         )
         .ok()
         .unwrap();
-        assert_eq!(
-            clocks.system_clock.freq().to_Hz() as u64,
-            RPiPicoClockScale::freq_hz(),
-        );
 
         let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets, &clocks);
 
@@ -126,7 +122,8 @@ mod app {
         // Init PWMs
         let mut pwm_slices = hal::pwm::Slices::new(ctx.device.PWM, &mut resets);
 
-        let clock_scale = RPiPicoClockScale::new(50_000, false);
+        let clock_scale =
+            RPiPicoClockScale::new(50_000, false, clocks.system_clock.freq().to_Hz() as u64);
 
         {
             // Configure PWM0
@@ -320,13 +317,17 @@ mod app {
                         );
                     }
                 };
-                let clock_scale = RPiPicoClockScale::new(val.avr_icr1(), is_mode2);
-                let top = clock_scale.to_top();
+                let new_clock_scale = RPiPicoClockScale::new(
+                    val.avr_icr1(),
+                    is_mode2,
+                    ctx.local.clock_scale.system_clock_freq_hz(),
+                );
+                let top = new_clock_scale.to_top();
 
                 let duty0 = (top / 100).max(1);
                 let led_duty = (duty0 * 2).min(top - 1);
-                let div_int = clock_scale.div_int;
-                *ctx.local.clock_scale = clock_scale;
+                let div_int = new_clock_scale.div_int;
+                *ctx.local.clock_scale = new_clock_scale;
 
                 ctx.shared.pwm_slices.lock(|pwm_slices| {
                     let pwm0 = &mut pwm_slices.pwm0;

@@ -74,8 +74,6 @@ impl Prescaler {
 // want to emulate.
 const EMULATE_CLOCK_MODE1: u64 = 2_000_000;
 const EMULATE_CLOCK_MODE2: u64 = 250_000;
-// This is the clock frequency of the Pico.
-const PICO_CLOCK: u64 = 125_000_000;
 
 /// Helper to calculate PWM clocks in Raspberry Pi Pico to emulate Arduino Nano.
 pub struct RPiPicoClockScale {
@@ -87,21 +85,19 @@ pub struct RPiPicoClockScale {
     clock_gain: f64,
     /// The actual top value.
     actual_top: u16,
+    // the system clock frequency (Hz)
+    system_clock_freq_hz: u64,
 }
 
 impl RPiPicoClockScale {
-    pub const fn freq_hz() -> u64 {
-        PICO_CLOCK
-    }
-
-    pub fn new(orig_top: u16, is_mode2: bool) -> Self {
+    pub fn new(orig_top: u16, is_mode2: bool, system_clock_freq_hz: u64) -> Self {
         let (div_int, emulate_clock) = if is_mode2 {
             (255, EMULATE_CLOCK_MODE2)
         } else {
             (62, EMULATE_CLOCK_MODE1)
         };
 
-        let pwm_clock = PICO_CLOCK as f64 / div_int as f64;
+        let pwm_clock = system_clock_freq_hz as f64 / div_int as f64;
 
         let clock_gain = emulate_clock as f64 / pwm_clock; // * div_int as f64 / PICO_CLOCK as f64;
 
@@ -113,6 +109,7 @@ impl RPiPicoClockScale {
             orig_top,
             clock_gain,
             actual_top,
+            system_clock_freq_hz,
         };
 
         info!(
@@ -126,6 +123,10 @@ impl RPiPicoClockScale {
         );
 
         result
+    }
+
+    pub fn system_clock_freq_hz(&self) -> u64 {
+        self.system_clock_freq_hz
     }
 
     /// best effort to convert top value
