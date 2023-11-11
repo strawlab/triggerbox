@@ -25,7 +25,7 @@ mod app {
     use usbd_serial::SerialPort;
 
     use braid_triggerbox_comms::{
-        PacketParser, RPiPicoClockScale, SyncVal, UdevMsg, UsbEvent, BUF_MAX_SZ,
+        EmulatedNanoPwmClock, PacketParser, SyncVal, UdevMsg, UsbEvent, BUF_MAX_SZ,
     };
     use crc::{Crc, CRC_8_MAXIM_DOW};
 
@@ -61,7 +61,7 @@ mod app {
         event_rx: Consumer<'static, UsbEvent, Q_SZ>,
         pwm_cycle: u8,
         /// A cached copy of what our PWM clock is doing.
-        clock_scale: RPiPicoClockScale,
+        clock_scale: EmulatedNanoPwmClock,
     }
 
     #[init(local = [usb_bus: Option<UsbBusAllocator<UsbBus>> = None])]
@@ -123,7 +123,7 @@ mod app {
         let mut pwm_slices = hal::pwm::Slices::new(ctx.device.PWM, &mut resets);
 
         let clock_scale =
-            RPiPicoClockScale::new(50_000, false, clocks.system_clock.freq().to_Hz() as u64);
+            EmulatedNanoPwmClock::new(50_000, false, clocks.system_clock.freq().to_Hz() as u64);
 
         {
             // Configure PWM0
@@ -317,7 +317,7 @@ mod app {
                         );
                     }
                 };
-                let new_clock_scale = RPiPicoClockScale::new(
+                let new_clock_scale = EmulatedNanoPwmClock::new(
                     val.avr_icr1(),
                     is_mode2,
                     ctx.local.clock_scale.system_clock_freq_hz(),

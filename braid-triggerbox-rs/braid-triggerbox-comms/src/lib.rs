@@ -75,8 +75,8 @@ impl Prescaler {
 const EMULATE_CLOCK_MODE1: u64 = 2_000_000;
 const EMULATE_CLOCK_MODE2: u64 = 250_000;
 
-/// Helper to calculate PWM clocks in Raspberry Pi Pico to emulate Arduino Nano.
-pub struct RPiPicoClockScale {
+/// Helper to calculate emulated Arduino Nano PWM clock.
+pub struct EmulatedNanoPwmClock {
     /// The Pico clock divisor.
     pub div_int: u8,
     /// The original (Nano) PWM top value.
@@ -89,7 +89,7 @@ pub struct RPiPicoClockScale {
     system_clock_freq_hz: u64,
 }
 
-impl RPiPicoClockScale {
+impl EmulatedNanoPwmClock {
     pub fn new(orig_top: u16, is_mode2: bool, system_clock_freq_hz: u64) -> Self {
         let (div_int, emulate_clock) = if is_mode2 {
             (255, EMULATE_CLOCK_MODE2)
