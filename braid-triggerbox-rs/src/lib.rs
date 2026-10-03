@@ -117,7 +117,7 @@ impl TriggerboxDevice {
         .await
         {
             Ok(r) => r,
-            Err(elapsed) => Err(elapsed).map_err(anyhow::Error::from),
+            Err(elapsed) => Err(anyhow::Error::from(elapsed)),
         }
         .with_context(|| format!("opening device {device_path}"))?;
 
