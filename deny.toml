@@ -1,0 +1,32 @@
+# cargo-deny configuration, shared by braid-triggerbox-rs and the Pico
+# firmware. See https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Only report unmaintained crates which we depend on directly.
+unmaintained = "workspace"
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# The allow list is shared by both workspaces, which use different subsets.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Allow path dependencies without a version in unpublished crates (the firmware).
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

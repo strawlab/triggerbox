@@ -9,6 +9,16 @@ on:
     # At 23:25 on Thursday.
     - cron: "25 23 * * 4"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build-arduino-firmware:
     # Based on https://legion2.github.io/2020/03/27/from-arduino-builder-to-arduino-cli.html
@@ -31,6 +41,9 @@ jobs:
       - name: Compile Sketch
         run: arduino-cli compile --fqbn arduino:avr:nano
 
+  # Lint, test and document the host library with the latest stable Rust.
+  # Warnings are errors. The weekly scheduled run catches new lints in new Rust
+  # releases.
   check:
     strategy:
       matrix:
@@ -45,15 +58,88 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          components: clippy, rustfmt
       - name: Run fmt
-        run: cargo fmt -- --check
+        run: cargo fmt --all --check
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- --deny=warnings
       - name: Run test
         run: cargo test --workspace
+      - name: Build docs
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: --deny=warnings
+
+  # braid-triggerbox-comms is also used without `std` by the firmware.
+  check-comms-no-std:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: braid-triggerbox-rs
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: thumbv6m-none-eabi
+      - name: Run clippy
+        run: >-
+          cargo clippy -p braid-triggerbox-comms --no-default-features --features defmt
+          --target thumbv6m-none-eabi -- --deny=warnings
+
+  # Check that each crate builds with the `rust-version` it declares.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install update apt repos
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      - name: Check host crates
+        working-directory: braid-triggerbox-rs
+        run: cargo hack check --rust-version --workspace
+      - name: Check firmware
+        working-directory: hardware_v3/braid-triggerbox-firmware-pico
+        run: |
+          MSRV=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].rust_version')
+          rustup toolchain install "$MSRV" --profile minimal --target thumbv6m-none-eabi --no-self-update
+          cargo "+$MSRV" check --locked
+
+  # Security advisories, licenses and dependency sources. See deny.toml.
+  cargo-deny:
+    strategy:
+      matrix:
+        manifest-path:
+          - braid-triggerbox-rs/Cargo.toml
+          - hardware_v3/braid-triggerbox-firmware-pico/Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: ${{ matrix.manifest-path }}
+
+  check-license-headers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test that every .rs file starts with an SPDX license header
+        run: |
+          fail=0
+          for f in $(git ls-files '*.rs'); do
+            if ! head -n 1 "$f" | grep -qx '// SPDX-License-Identifier: MIT OR Apache-2.0'; then
+              echo "missing SPDX license header: $f"
+              fail=1
+            fi
+          done
+          exit $fail
 
   build-pico-firmware:
     strategy:
@@ -69,19 +155,20 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
       - name: Setup Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
-      - name: Install thumbv6m-none-eabi target
-        run: rustup target install thumbv6m-none-eabi
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: thumbv6m-none-eabi
       - name: Install flip-link
-        run: cargo install flip-link
+        run: cargo install flip-link --locked
       - name: Install elf2uf2-rs
         run: cargo install --git https://github.com/strawlab/elf2uf2-rs
       - name: Run fmt
-        run: cargo fmt -- --check
+        run: cargo fmt --check
       - name: Run clippy
-        run: cargo clippy --release -- --deny=warnings
+        run: cargo clippy --release --locked -- --deny=warnings
       - name: Build ELF
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Make artifacts directory
         run: mkdir -p artifacts
       - name: Build UF2
