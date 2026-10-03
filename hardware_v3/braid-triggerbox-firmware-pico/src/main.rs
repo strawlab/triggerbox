@@ -24,9 +24,7 @@ mod app {
     use usb_device::{class_prelude::*, prelude::*};
     use usbd_serial::SerialPort;
 
-    use braid_triggerbox_comms::{
-        EmulatedNanoPwmClock, PacketParser, SyncVal, UdevMsg, UsbEvent, BUF_MAX_SZ,
-    };
+    use braid_triggerbox_comms::{EmulatedNanoPwmClock, PacketParser, SyncVal, UdevMsg, UsbEvent};
     use crc::{Crc, CRC_8_MAXIM_DOW};
 
     pub const Q_SZ: usize = 4;
@@ -38,7 +36,6 @@ mod app {
         fugit::Duration::<u32, 1, 1_000_000>::from_ticks(SCAN_TIME_US);
 
     static mut EVENT_QUEUE: Queue<UsbEvent, Q_SZ> = Queue::new();
-    static mut PARSER_BACKING: bbqueue::BBBuffer<BUF_MAX_SZ> = bbqueue::BBBuffer::new();
 
     #[shared]
     struct Shared {
@@ -56,7 +53,7 @@ mod app {
             hal::gpio::PullNone,
         >,
         usb_dev: UsbDevice<'static, UsbBus>,
-        packet_parser: PacketParser<'static>,
+        packet_parser: PacketParser,
         event_tx: Producer<'static, UsbEvent>,
         event_rx: Consumer<'static, UsbEvent>,
         pwm_cycle: u8,
@@ -149,7 +146,7 @@ mod app {
             pwm0.enable_interrupt(); // call pwm_irq
         };
 
-        let packet_parser = unsafe { PacketParser::new(&PARSER_BACKING) };
+        let packet_parser = PacketParser::new();
 
         let (event_tx, event_rx) = unsafe { EVENT_QUEUE.split() };
 

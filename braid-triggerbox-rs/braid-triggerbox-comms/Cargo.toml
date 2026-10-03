@@ -8,7 +8,6 @@ rust-version = "1.82"
 description = "host and device communication for Braid triggerbox"
 
 [dependencies]
-bbqueue = "0.5.1"
 defmt = { version = "1.0.1", optional = true }
 log = { version = "0.4.34", optional = true }
 fugit = "0.6.0"
@@ -18,4 +17,3 @@ default = ["std"]
 
 std = ["log"]
 defmt = ["dep:defmt", "fugit/defmt"]
-thumbv6 = ["bbqueue/thumbv6"]
