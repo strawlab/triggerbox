@@ -76,8 +76,41 @@ rustup target install thumbv6m-none-eabi
 cargo install flip-link
 # The default 'runner'. On macOS:
 brew install picotool
-# On other platforms, see https://github.com/raspberrypi/picotool
+# On Linux, see below. On other platforms, see https://github.com/raspberrypi/picotool
 ```
+
+#### picotool on Debian and Ubuntu
+
+On Debian 13 (trixie) or later, install the packaged version, which also
+installs udev rules so picotool works without `sudo`:
+
+```sh
+sudo apt install picotool
+```
+
+Ubuntu only packages picotool from 26.10 onwards, and Debian 12 (bookworm)
+does not package it, so build it from source there. picotool needs the Pico
+SDK source to build:
+
+```sh
+sudo apt install build-essential pkg-config libusb-1.0-0-dev cmake git
+git clone --depth 1 --branch 2.3.1 https://github.com/raspberrypi/pico-sdk.git
+git clone --depth 1 --branch 2.3.1 https://github.com/raspberrypi/picotool.git
+cmake -S picotool -B picotool/build -DPICO_SDK_PATH=$PWD/pico-sdk
+cmake --build picotool/build -j
+sudo cmake --install picotool/build
+# Allow access to the Pico in bootloader mode without sudo:
+sudo cp picotool/udev/60-picotool.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Alternatively, prebuilt Linux binaries are available from
+[pico-sdk-tools](https://github.com/raspberrypi/pico-sdk-tools/releases) (you
+still need `libusb-1.0-0` and the udev rules above).
+
+Check the installation with `picotool version` (it must report 2.0 or later
+and must not say it was compiled without USB support). With the Pico in
+bootloader mode, `picotool info` should list it.
 
 </details>
 
