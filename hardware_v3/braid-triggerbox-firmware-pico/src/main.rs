@@ -327,7 +327,7 @@ mod app {
                 info!("ignoring AOUT command {}, {}", val.aout0, val.aout1);
 
                 let aout_confirm = fill_sample(val.aout_sequence, ctx);
-                send_data(&aout_confirm, b'V', ctx);
+                send_data(&aout_confirm, b'O', ctx);
             }
             UsbEvent::Udev(val) => {
                 match val {
