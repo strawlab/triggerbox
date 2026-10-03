@@ -106,6 +106,7 @@ pub struct TriggerboxDevice {
     on_new_model_cb: ClockModelCallback,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     max_acceptable_measurement_error: Duration,
+    query_dt: Duration,
 }
 
 impl std::fmt::Debug for TriggerboxDevice {
@@ -224,24 +225,30 @@ fn volts_to_dac(volts: f64) -> u16 {
 }
 
 impl TriggerboxDevice {
-    /// Connect to the triggerbox at `device_path`.
+    /// Connect to the triggerbox at `opts.device_path`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the device cannot be opened, does not respond or
-    /// does not have the name `assert_device_name` (if given).
+    /// Returns an error if the options are out of range, or if the device
+    /// cannot be opened, does not respond or does not have the name
+    /// `opts.assert_device_name` (if given).
     pub async fn new(
         on_new_model_cb: ClockModelCallback,
-        device_path: String,
         outq: Receiver<Cmd>,
         triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
-        assert_device_name: NameType,
-        max_acceptable_measurement_error: std::time::Duration,
-        sleep_dur: std::time::Duration,
+        opts: TriggerboxOptions,
     ) -> Result<Self> {
+        let TriggerboxOptions {
+            device_path,
+            query_dt,
+            assert_device_name,
+            max_acceptable_measurement_error,
+            sleep_dur,
+        } = opts;
         let baud_rate = 115_200;
         let max_acceptable_measurement_error = Duration::from_std(max_acceptable_measurement_error)
             .context("max_acceptable_measurement_error out of range")?;
+        let query_dt = Duration::from_std(query_dt).context("query_dt out of range")?;
         let now = chrono::Utc::now();
 
         // wait 1 second before first version query
@@ -292,6 +299,7 @@ impl TriggerboxDevice {
             on_new_model_cb,
             triggerbox_data_tx,
             max_acceptable_measurement_error,
+            query_dt,
         })
     }
 
@@ -359,11 +367,8 @@ impl TriggerboxDevice {
     /// # Errors
     ///
     /// Returns an error if communication with the device fails.
-    pub async fn run_forever(
-        mut self: TriggerboxDevice,
-        query_dt: std::time::Duration,
-    ) -> Result<()> {
-        let query_dt = Duration::from_std(query_dt)?;
+    pub async fn run_forever(mut self: TriggerboxDevice) -> Result<()> {
+        let query_dt = self.query_dt;
 
         let connect_time = chrono::Utc::now();
 
@@ -645,25 +650,8 @@ pub async fn run_triggerbox(
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
     opts: TriggerboxOptions,
 ) -> Result<()> {
-    let TriggerboxOptions {
-        device_path,
-        query_dt,
-        assert_device_name,
-        max_acceptable_measurement_error,
-        sleep_dur,
-    } = opts;
-
-    let triggerbox = TriggerboxDevice::new(
-        on_new_model_cb,
-        device_path,
-        outq,
-        triggerbox_data_tx,
-        assert_device_name,
-        max_acceptable_measurement_error,
-        sleep_dur,
-    )
-    .await?;
-    triggerbox.run_forever(query_dt).await
+    let triggerbox = TriggerboxDevice::new(on_new_model_cb, outq, triggerbox_data_tx, opts).await?;
+    triggerbox.run_forever().await
 }
 
 fn get_rate(rate_ideal: f64, prescaler: Prescaler) -> (u16, f64) {
