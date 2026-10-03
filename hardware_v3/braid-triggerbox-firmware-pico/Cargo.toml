@@ -3,9 +3,40 @@ name = "braid-triggerbox-firmware-pico"
 version = "0.1.0"
 authors = ["Andrew Straw <strawman@astraw.com>"]
 license = "MIT OR Apache-2.0"
-edition = "2021"
-rust-version = "1.87"
+edition = "2024"
+rust-version = "1.88"
 publish = false
+
+[[bin]]
+name = "braid-triggerbox-firmware-pico"
+test = false
+bench = false
+
+[lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+unused_lifetimes = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+unreachable = "warn"
+dbg_macro = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
 
 [dependencies]
 static_assertions = "1.1.0"
@@ -29,3 +60,8 @@ heapless = "0.9.1"
 fugit = { version = "0.3.9", features = ["defmt"] }
 
 braid-triggerbox-comms = {path="../../braid-triggerbox-rs/braid-triggerbox-comms", default-features=false, features=["defmt"]}
+
+[profile.release]
+# Panic on integer overflow in release builds too, rather than silently
+# wrapping.
+overflow-checks = true

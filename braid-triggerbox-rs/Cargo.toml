@@ -6,8 +6,11 @@ license = "MIT OR Apache-2.0"
 description = "camera synchronization trigger box for Braid"
 repository = "https://github.com/strawlab/triggerbox"
 homepage = "https://github.com/strawlab/triggerbox/tree/main/braid-triggerbox-rs"
-edition = "2021"
+edition = "2024"
 rust-version = "1.89"
+
+[lints]
+workspace = true
 
 [dependencies]
 thiserror = "2"
@@ -38,3 +41,35 @@ braid-triggerbox-comms = { version = "0.1", path = "braid-triggerbox-comms" }
 
 [workspace]
 members = ["braid-triggerbox-comms"]
+resolver = "3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+unused_lifetimes = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+unreachable = "warn"
+dbg_macro = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+
+[profile.release]
+# Panic on integer overflow in release builds too, rather than silently
+# wrapping.
+overflow-checks = true

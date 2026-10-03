@@ -3,11 +3,14 @@ name = "braid-triggerbox-comms"
 version = "0.1.0"
 authors = ["Andrew Straw <strawman@astraw.com>"]
 license = "MIT OR Apache-2.0"
-edition = "2021"
-rust-version = "1.82"
+edition = "2024"
+rust-version = "1.85"
 description = "host and device communication for Braid triggerbox"
 repository = "https://github.com/strawlab/triggerbox"
 homepage = "https://github.com/strawlab/triggerbox/tree/main/braid-triggerbox-rs/braid-triggerbox-comms"
+
+[lints]
+workspace = true
 
 [dependencies]
 defmt = { version = "1.0.1", optional = true }
