@@ -256,7 +256,7 @@ pub struct NewAOut {
 pub enum UdevMsg {
     /// Query the device name.
     Query,
-    /// Set the device name.
+    /// Set the device name. (The CRC sent with the name is not checked.)
     Set([u8; 8]),
 }
 
@@ -397,6 +397,11 @@ fn parse(buf: &[u8]) -> (Result<UsbEvent, Error>, usize) {
         [b'V', b'?', ..] => (Ok(UsbEvent::VersionRequest), 2),
         [b'P', value, ..] => (Ok(UsbEvent::TimestampQuery(value)), 2),
         [b'N', b'?', ..] => (Ok(UsbEvent::Udev(UdevMsg::Query)), 2),
+        // The name (8 bytes) is followed by its CRC as two hex digits.
+        [b'N', b'=', n0, n1, n2, n3, n4, n5, n6, n7, _crc0, _crc1, ..] => {
+            let name = [n0, n1, n2, n3, n4, n5, n6, n7];
+            (Ok(UsbEvent::Udev(UdevMsg::Set(name))), 12)
+        }
         [b'S', value, ..] => {
             let result = match value {
                 b'0' => Ok(UsbEvent::Sync(SyncVal::Sync0)),
@@ -431,7 +436,7 @@ fn parse(buf: &[u8]) -> (Result<UsbEvent, Error>, usize) {
             });
             (Ok(event), 7)
         }
-        [] | [_] | [b'T' | b'O', b'=', ..] => (Err(Error::AwaitingMoreData), 0),
+        [] | [_] | [b'T' | b'O' | b'N', b'=', ..] => (Err(Error::AwaitingMoreData), 0),
         [_, _, ..] => (Err(Error::UnknownData), 2),
     }
 }
@@ -516,6 +521,10 @@ mod tests {
                 }),
             ),
             (&b"N?"[..], UsbEvent::Udev(UdevMsg::Query)),
+            (
+                &b"N=Pabcdefg3C"[..],
+                UsbEvent::Udev(UdevMsg::Set(*b"Pabcdefg")),
+            ),
         ] {
             check_simple(buf, expected);
             check_stale(buf, expected);
