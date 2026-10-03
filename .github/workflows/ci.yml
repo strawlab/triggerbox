@@ -51,9 +51,9 @@ jobs:
       - name: Run fmt
         run: cargo fmt -- --check
       - name: Run clippy
-        run: cargo clippy -- --deny=warnings
+        run: cargo clippy --workspace --all-targets -- --deny=warnings
       - name: Run test
-        run: cargo test
+        run: cargo test --workspace
 
   build-pico-firmware:
     strategy:
@@ -76,6 +76,10 @@ jobs:
         run: cargo install flip-link
       - name: Install elf2uf2-rs
         run: cargo install --git https://github.com/strawlab/elf2uf2-rs
+      - name: Run fmt
+        run: cargo fmt -- --check
+      - name: Run clippy
+        run: cargo clippy --release -- --deny=warnings
       - name: Build ELF
         run: cargo build --release
       - name: Make artifacts directory

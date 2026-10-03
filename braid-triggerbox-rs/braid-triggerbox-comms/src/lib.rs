@@ -418,10 +418,10 @@ mod tests {
             ),
             (&b"N?"[..], UsbEvent::Udev(UdevMsg::Query)),
         ] {
-            check_simple(buf, &expected);
-            check_stale(buf, &expected);
-            check_multiple(buf, &expected);
-            check_many_partial_messages(buf, &expected);
+            check_simple(buf, expected);
+            check_stale(buf, expected);
+            check_multiple(buf, expected);
+            check_many_partial_messages(buf, expected);
         }
     }
 }
