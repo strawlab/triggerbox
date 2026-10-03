@@ -1,7 +1,11 @@
-#[macro_use]
-extern crate log;
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
-use braid_triggerbox::{make_trig_fps_cmd, name_display, to_name_type, Cmd};
+//! Demonstration program which drives a Braid triggerbox.
+
+use anyhow::Context;
+use log::info;
+
+use braid_triggerbox::{Cmd, make_trig_fps_cmd, name_display, to_name_type};
 
 use clap::{Parser, ValueEnum};
 
@@ -12,36 +16,36 @@ const DEFAULT_DEVICE_PATH: &str = "/dev/tty.usbmodem1423";
 const DEFAULT_DEVICE_PATH: &str = "/dev/ttyUSB0";
 
 #[cfg(target_os = "windows")]
-const DEFAULT_DEVICE_PATH: &str = r#"COM3"#;
+const DEFAULT_DEVICE_PATH: &str = "COM3";
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// Filename of device
-    #[structopt(long = "device", default_value = DEFAULT_DEVICE_PATH)]
+    #[arg(long = "device", default_value = DEFAULT_DEVICE_PATH)]
     device: String,
 
-    /// RunMode
+    /// Run mode
     #[arg(long, value_enum, default_value_t = RunMode::FreeRun)]
     run_mode: RunMode,
 
     /// Framerate
-    #[structopt(long = "fps", default_value = "100")]
+    #[arg(long = "fps", default_value = "100")]
     fps: f64,
     /// Analog output 1
-    #[structopt(long = "aout1", default_value = "0.0")]
+    #[arg(long = "aout1", default_value = "0.0")]
     aout1: f64,
     /// Analog output 2
-    #[structopt(long = "aout2", default_value = "0.0")]
+    #[arg(long = "aout2", default_value = "0.0")]
     aout2: f64,
     /// Assert device name. Raises an error if device's name is not equal.
-    #[structopt(long = "assert-device-name")]
+    #[arg(long = "assert-device-name")]
     assert_device_name: Option<String>,
     /// Set device name. Sets flash storage on the device to store this name.
-    #[structopt(long = "set-device-name")]
+    #[arg(long = "set-device-name")]
     set_device_name: Option<String>,
     /// Maximum acceptable measurement error (in milliseconds)
-    #[structopt(long = "max-time-error-msec", default_value = "6")]
+    #[arg(long = "max-time-error-msec", default_value = "6")]
     max_acceptable_measurement_error: u64,
 
     /// Sleep duration to allow device to wake up (in seconds)
@@ -71,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
     match &opt.run_mode {
         RunMode::FreeRun => {
             let (rate_cmd, rate_actual) = make_trig_fps_cmd(opt.fps);
-            println!("Requested {} fps, using {} fps", opt.fps, rate_actual);
+            println!("Requested {} fps, using {rate_actual} fps", opt.fps);
             tx.send(rate_cmd).await?;
         }
         RunMode::Stop => {
@@ -116,7 +120,8 @@ async fn main() -> anyhow::Result<()> {
         println!("Should quit early, but cannot");
     }
 
-    let sleep_dur = std::time::Duration::from_secs_f32(opt.sleep);
+    let sleep_dur = std::time::Duration::try_from_secs_f32(opt.sleep)
+        .with_context(|| format!("invalid sleep duration {}", opt.sleep))?;
 
     let opts = braid_triggerbox::TriggerboxOptions {
         device_path: opt.device,
