@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+//! Braid triggerbox firmware for the Raspberry Pi Pico.
+
 #![no_std]
 #![no_main]
 
@@ -12,24 +16,29 @@ mod app {
 
     use defmt::{debug, info, trace, warn};
     use rp_pico::{
-        hal::{
-            self, clocks::init_clocks_and_plls, prelude::*, pwm::Slices, timer::Alarm, usb::UsbBus,
-            watchdog::Watchdog, Sio,
-        },
         XOSC_CRYSTAL_FREQ,
+        hal::{
+            self, Sio, clocks::init_clocks_and_plls, prelude::*, pwm::Slices, timer::Alarm,
+            usb::UsbBus, watchdog::Watchdog,
+        },
     };
 
     use embedded_hal::pwm::SetDutyCycle;
+    use rtic::{Mutex, mutex_prelude::TupleExt02};
 
     use usb_device::{class_prelude::*, prelude::*};
     use usbd_serial::SerialPort;
 
-    use braid_triggerbox_comms::{EmulatedNanoPwmClock, PacketParser, SyncVal, UdevMsg, UsbEvent};
-    use crc::{Crc, CRC_8_MAXIM_DOW};
+    use braid_triggerbox_comms::{
+        DEVICE_FIRMWARE_VERSION, EmulatedNanoPwmClock, PacketParser, Prescaler, SyncVal,
+        TopAndPrescaler, UdevMsg, UsbEvent,
+    };
+    use crc::{CRC_8_MAXIM_DOW, Crc};
 
-    pub const Q_SZ: usize = 4;
+    /// Capacity of the queue of events from the host.
+    const Q_SZ: usize = 4;
 
-    pub const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
+    const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
 
     const SCAN_TIME_US: u32 = 1_000_000;
     const SCAN_TIME: fugit::Duration<u32, 1, 1_000_000> =
@@ -57,15 +66,21 @@ mod app {
         pwm_cycle: u8,
         /// A cached copy of what our PWM clock is doing.
         clock_scale: EmulatedNanoPwmClock,
+        /// Whether the last requested trigger rate could be produced. If not,
+        /// the trigger pulses stay stopped until a rate which can be produced
+        /// is requested.
+        rate_ok: bool,
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "if the hardware cannot be initialized, there is nothing else to do"
+    )]
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<UsbBus>> = None,
         event_queue: Queue<UsbEvent, Q_SZ> = Queue::new(),
     ])]
-    fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-        let core = ctx.core;
-
+    fn init(ctx: init::Context<'_>) -> (Shared, Local, init::Monotonics) {
         let mut resets = ctx.device.RESETS;
         let mut watchdog = Watchdog::new(ctx.device.WATCHDOG);
         let clocks = init_clocks_and_plls(
@@ -77,28 +92,27 @@ mod app {
             &mut resets,
             &mut watchdog,
         )
-        .ok()
-        .unwrap();
+        .expect("init clocks");
 
         let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets, &clocks);
 
-        let usb_bus = ctx.local.usb_bus;
-        usb_bus.replace(UsbBusAllocator::new(UsbBus::new(
-            ctx.device.USBCTRL_REGS,
-            ctx.device.USBCTRL_DPRAM,
-            clocks.usb_clock,
-            true,
-            &mut resets,
-        )));
-        let serial = SerialPort::new(usb_bus.as_ref().unwrap());
+        let usb_bus: &'static UsbBusAllocator<UsbBus> =
+            ctx.local.usb_bus.insert(UsbBusAllocator::new(UsbBus::new(
+                ctx.device.USBCTRL_REGS,
+                ctx.device.USBCTRL_DPRAM,
+                clocks.usb_clock,
+                true,
+                &mut resets,
+            )));
+        let serial = SerialPort::new(usb_bus);
 
-        let usb_dev = UsbDeviceBuilder::new(usb_bus.as_ref().unwrap(), UsbVidPid(0x16c0, 0x27dd))
+        let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27dd))
             .strings(&[
                 StringDescriptors::default()
                     .manufacturer("Straw Lab")
                     .product("Triggerbox RP2040"), // .serial_number("TEST")
             ])
-            .unwrap()
+            .expect("USB string descriptors")
             .device_class(2)
             .build();
 
@@ -110,22 +124,20 @@ mod app {
             &mut resets,
         );
         let mut led = pins.led.reconfigure();
-        led.set_low().unwrap();
+        let Ok(()) = led.set_low();
 
-        let mut alarm = timer.alarm_0().unwrap();
-        let _ = alarm.schedule(SCAN_TIME);
+        let mut alarm = timer.alarm_0().expect("alarm 0");
+        if alarm.schedule(SCAN_TIME).is_err() {
+            warn!("could not schedule LED timer");
+        }
         alarm.enable_interrupt();
 
-        // The delay object lets us wait for specified amounts of time (in
-        // milliseconds)
-        let mut _delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
-
         // Init PWMs
-        let mut pwm_slices = hal::pwm::Slices::new(ctx.device.PWM, &mut resets);
+        let mut pwm_slices = Slices::new(ctx.device.PWM, &mut resets);
 
         let clock_scale =
-            EmulatedNanoPwmClock::new(50_000, false, clocks.system_clock.freq().to_Hz() as u64)
-                .unwrap();
+            EmulatedNanoPwmClock::new(50_000, false, clocks.system_clock.freq().to_Hz())
+                .expect("initial PWM clock");
 
         {
             // Configure PWM0
@@ -141,7 +153,7 @@ mod app {
             let channel0 = &mut pwm0.channel_a;
             channel0.output_to(pins.gpio0);
 
-            channel0.set_duty_cycle(top / 100).unwrap();
+            let Ok(()) = channel0.set_duty_cycle(top / 100);
             pwm0.enable();
 
             pwm0.enable_interrupt(); // call pwm_irq
@@ -174,6 +186,7 @@ mod app {
                 led,
                 usb_dev,
                 clock_scale,
+                rate_ok: true,
                 packet_parser,
                 event_tx,
                 event_rx,
@@ -185,9 +198,9 @@ mod app {
 
     #[idle(
         shared = [serial, frame_number, pwm_slices],
-        local = [event_rx, clock_scale]
+        local = [event_rx, clock_scale, rate_ok]
     )]
-    fn idle(mut ctx: idle::Context) -> ! {
+    fn idle(mut ctx: idle::Context<'_>) -> ! {
         info!("Started!");
         loop {
             match ctx.local.event_rx.dequeue() {
@@ -203,29 +216,33 @@ mod app {
         shared = [serial, frame_number, pwm_slices, timer],
         local = [usb_dev, event_tx, packet_parser]
     )]
-    fn usb_irq(mut ctx: usb_irq::Context) {
+    fn usb_irq(mut ctx: usb_irq::Context<'_>) {
         let mut buf = [0u8; 64];
 
         let usb_dev = ctx.local.usb_dev;
         let read_result = ctx.shared.serial.lock(|serial| {
-            if !usb_dev.poll(&mut [serial]) {
-                Ok(0)
-            } else {
+            if usb_dev.poll(&mut [serial]) {
                 serial.read(&mut buf)
+            } else {
+                Ok(0)
             }
         });
-        match read_result {
-            Ok(count) if count > 0 => {
-                let now_usec = ctx.shared.timer.lock(|timer| timer.get_counter());
-                let now_usec = braid_triggerbox_comms::Instant::from_ticks(now_usec.ticks());
-                // TODO: do not parse packets in IRQ
-                match ctx.local.packet_parser.got_buf(now_usec, &buf[..count]) {
-                    Ok(ev) => ctx.local.event_tx.enqueue(ev).ok().unwrap(),
-                    Err(braid_triggerbox_comms::Error::AwaitingMoreData) => {}
-                    Err(e) => warn!("error parsing: {}", e),
-                };
+        if let Ok(count) = read_result
+            && count > 0
+        {
+            let now_usec = ctx.shared.timer.lock(|timer| timer.get_counter());
+            let now_usec = braid_triggerbox_comms::Instant::from_ticks(now_usec.ticks());
+            let data = buf.get(..count).unwrap_or_default();
+            // TODO: do not parse packets in IRQ
+            match ctx.local.packet_parser.got_buf(now_usec, data) {
+                Ok(ev) => {
+                    if let Err(ev) = ctx.local.event_tx.enqueue(ev) {
+                        warn!("event queue full, dropping event {}", ev);
+                    }
+                }
+                Err(braid_triggerbox_comms::Error::AwaitingMoreData) => {}
+                Err(e) => warn!("error parsing: {}", e),
             }
-            _ => {}
         }
     }
 
@@ -234,16 +251,14 @@ mod app {
         priority = 1,
         local = [alarm, led, tog: bool = true],
     )]
-    fn timer_irq(ctx: timer_irq::Context) {
-        if *ctx.local.tog {
-            ctx.local.led.set_high().unwrap();
-        } else {
-            ctx.local.led.set_low().unwrap();
-        }
+    fn timer_irq(ctx: timer_irq::Context<'_>) {
+        let Ok(()) = ctx.local.led.set_state((*ctx.local.tog).into());
         *ctx.local.tog = !*ctx.local.tog;
 
         ctx.local.alarm.clear_interrupt();
-        let _ = ctx.local.alarm.schedule(SCAN_TIME);
+        if ctx.local.alarm.schedule(SCAN_TIME).is_err() {
+            warn!("could not schedule LED timer");
+        }
     }
 
     #[task(
@@ -252,7 +267,7 @@ mod app {
         shared = [frame_number, pwm_slices],
         local = [pwm_cycle],
     )]
-    fn pwm_irq(ctx: pwm_irq::Context) {
+    fn pwm_irq(ctx: pwm_irq::Context<'_>) {
         let p = ctx.shared.pwm_slices;
         let f = ctx.shared.frame_number;
 
@@ -263,16 +278,15 @@ mod app {
         });
     }
 
-    fn handle_event(ctx: &mut idle::Context, event: UsbEvent) {
+    fn handle_event(ctx: &mut idle::Context<'_>, event: UsbEvent) {
         debug!("handling event: {:?}", event);
-        use rtic::{mutex_prelude::TupleExt02, Mutex};
         match event {
             UsbEvent::TimestampQuery(value) => {
                 let timestamp_request = fill_sample(value, ctx);
                 send_data(&timestamp_request, b'P', ctx);
             }
             UsbEvent::VersionRequest => {
-                send_data(&fill_sample(14, ctx), b'V', ctx);
+                send_data(&fill_sample(DEVICE_FIRMWARE_VERSION, ctx), b'V', ctx);
             }
             UsbEvent::Sync(val) => {
                 match val {
@@ -288,6 +302,10 @@ mod app {
                         );
                     }
                     SyncVal::Sync1 => {
+                        if !*ctx.local.rate_ok {
+                            warn!("Not starting trigger pulses: rate cannot be produced");
+                            return;
+                        }
                         // start clock
                         ctx.shared.pwm_slices.lock(|pwm_slices| {
                             let pwm0 = &mut pwm_slices.pwm0;
@@ -303,53 +321,7 @@ mod app {
                     }
                 }
             }
-            UsbEvent::SetTop(val) => {
-                info!(
-                    "Received TOP={}, prescaler_key='{}'",
-                    val.avr_icr1(),
-                    core::str::from_utf8(&[val.prescaler_key()][..]).unwrap_or("??")
-                );
-
-                let is_mode2 = match val.prescaler_key() {
-                    b'1' => false,
-                    b'2' => true,
-                    _ => {
-                        panic!(
-                            "Unsupported prescaler_key: '{}' {}",
-                            core::str::from_utf8(&[val.prescaler_key()][..]).unwrap_or("??"),
-                            val.prescaler_key(),
-                        );
-                    }
-                };
-                let new_clock_scale = EmulatedNanoPwmClock::new(
-                    val.avr_icr1(),
-                    is_mode2,
-                    ctx.local.clock_scale.system_clock_freq_hz(),
-                )
-                .unwrap();
-                let top = new_clock_scale.to_top();
-
-                let duty0 = (top / 100).max(1);
-                let led_duty = (duty0 * 2).min(top - 1);
-                let div_int = new_clock_scale.div_int();
-                *ctx.local.clock_scale = new_clock_scale;
-
-                ctx.shared.pwm_slices.lock(|pwm_slices| {
-                    let pwm0 = &mut pwm_slices.pwm0;
-
-                    // Output channel A on PWM0 to the GP0 pin
-                    let channel0 = &mut pwm0.channel_a;
-
-                    // Output channel B on PWM0 to the GP1 pin
-                    let channel1 = &mut pwm0.channel_b;
-
-                    channel0.set_duty_cycle(duty0).unwrap();
-                    channel1.set_duty_cycle(led_duty).unwrap();
-
-                    pwm0.set_top(top);
-                    pwm0.set_div_int(div_int);
-                });
-            }
+            UsbEvent::SetTop(val) => set_top(ctx, &val),
             UsbEvent::SetAOut(val) => {
                 // AOUT values
                 info!("ignoring AOUT command {}, {}", val.aout0, val.aout1);
@@ -360,26 +332,89 @@ mod app {
             UsbEvent::Udev(val) => {
                 match val {
                     UdevMsg::Query => {
-                        let mut out_buf: [u8; 10] = [0; 10];
-                        let crc = CRC_MAXIM.checksum(&out_buf[0..8]);
+                        // Device names are not supported, so report an empty
+                        // name.
+                        let name = [0u8; 8];
+                        let crc = CRC_MAXIM.checksum(&name);
+                        let [n0, n1, n2, n3, n4, n5, n6, n7] = name;
                         // Emulate arduino "_serial.print(crc,HEX);" which will
                         // print a single character if the value is less that 0x10.
-                        let send_len = if crc >= 0x10 {
-                            out_buf[8] = hexchar(crc >> 4);
-                            out_buf[9] = hexchar(crc);
-                            10
+                        if crc >= 0x10 {
+                            let (hi, lo) = (hexchar(crc >> 4), hexchar(crc));
+                            send_buf(ctx, &[n0, n1, n2, n3, n4, n5, n6, n7, hi, lo]);
                         } else {
-                            out_buf[8] = hexchar(crc);
-                            9
-                        };
-                        send_buf(ctx, &out_buf[..send_len]);
+                            send_buf(ctx, &[n0, n1, n2, n3, n4, n5, n6, n7, hexchar(crc)]);
+                        }
                     }
                     UdevMsg::Set(_) => {
-                        todo!();
+                        warn!("Ignoring request to set device name: not supported");
                     }
                 }
             }
         }
+    }
+
+    fn set_top(ctx: &mut idle::Context<'_>, val: &TopAndPrescaler) {
+        info!(
+            "Received TOP={}, prescaler_key='{}'",
+            val.avr_icr1(),
+            core::str::from_utf8(&[val.prescaler_key()][..]).unwrap_or("??")
+        );
+
+        let is_mode2 = match val.prescaler() {
+            Some(Prescaler::Scale8) => false,
+            Some(Prescaler::Scale64) => true,
+            None => {
+                warn!(
+                    "Ignoring unsupported prescaler_key: {}",
+                    val.prescaler_key()
+                );
+                return;
+            }
+        };
+        let new_clock_scale = match EmulatedNanoPwmClock::new(
+            val.avr_icr1(),
+            is_mode2,
+            ctx.local.clock_scale.system_clock_freq_hz(),
+        ) {
+            Ok(new_clock_scale) => new_clock_scale,
+            Err(e) => {
+                // Rather than trigger at the wrong rate, stop triggering.
+                warn!(
+                    "Stopping trigger pulses: cannot produce TOP={}: {}",
+                    val.avr_icr1(),
+                    e
+                );
+                *ctx.local.rate_ok = false;
+                ctx.shared.pwm_slices.lock(|pwm_slices| {
+                    pwm_slices.pwm0.disable();
+                });
+                return;
+            }
+        };
+        *ctx.local.rate_ok = true;
+        let top = new_clock_scale.to_top();
+
+        let duty0 = (top / 100).max(1);
+        let led_duty = duty0.saturating_mul(2).min(top.saturating_sub(1));
+        let div_int = new_clock_scale.div_int();
+        *ctx.local.clock_scale = new_clock_scale;
+
+        ctx.shared.pwm_slices.lock(|pwm_slices| {
+            let pwm0 = &mut pwm_slices.pwm0;
+
+            // Output channel A on PWM0 to the GP0 pin
+            let channel0 = &mut pwm0.channel_a;
+
+            // Output channel B on PWM0 to the GP1 pin
+            let channel1 = &mut pwm0.channel_b;
+
+            let Ok(()) = channel0.set_duty_cycle(duty0);
+            let Ok(()) = channel1.set_duty_cycle(led_duty);
+
+            pwm0.set_top(top);
+            pwm0.set_div_int(div_int);
+        });
     }
 
     type Pulsenumber = u32; /* 2**32 @100Hz = 497 days */
@@ -393,34 +428,22 @@ mod app {
     }
 
     impl TimedSample {
-        fn to_buf(&self, buf: &mut [u8]) {
-            assert_eq!(buf.len(), 7);
-            buf[0] = self.value;
-            buf[1..5].copy_from_slice(&self.pulsenumber.to_le_bytes());
-            buf[5..7].copy_from_slice(&self.ticks.to_le_bytes());
+        fn to_bytes(&self) -> [u8; 7] {
+            let [p0, p1, p2, p3] = self.pulsenumber.to_le_bytes();
+            let [t0, t1] = self.ticks.to_le_bytes();
+            [self.value, p0, p1, p2, p3, t0, t1]
         }
     }
 
-    fn send_data(samp: &TimedSample, header: u8, ctx: &mut idle::Context) {
-        let mut buf: [u8; 32] = [0; 32];
-        buf[0] = header;
-
-        let payload_len = 7;
-        buf[1] = payload_len.try_into().unwrap();
-        samp.to_buf(&mut buf[2..2 + payload_len]);
-
-        let mut chksum: u8 = 0;
-        for i in 0..payload_len {
-            let char: u8 = buf[2 + i];
-            chksum = chksum.wrapping_add(char);
-        }
-        buf[2 + payload_len] = chksum;
-
-        send_buf(ctx, &buf[..3 + payload_len]);
+    fn send_data(samp: &TimedSample, header: u8, ctx: &mut idle::Context<'_>) {
+        let payload = samp.to_bytes();
+        let chksum = payload.iter().fold(0u8, |acc, x| acc.wrapping_add(*x));
+        let [d0, d1, d2, d3, d4, d5, d6] = payload;
+        // The payload length is 7.
+        send_buf(ctx, &[header, 7, d0, d1, d2, d3, d4, d5, d6, chksum]);
     }
 
-    fn fill_sample(value: u8, ctx: &mut idle::Context) -> TimedSample {
-        use rtic::mutex_prelude::TupleExt02;
+    fn fill_sample(value: u8, ctx: &mut idle::Context<'_>) -> TimedSample {
         let (pulsenumber, ticks_real) = (&mut ctx.shared.pwm_slices, &mut ctx.shared.frame_number)
             .lock(|pwm_slices, frame_number| {
                 let pwm0 = &mut pwm_slices.pwm0;
@@ -436,22 +459,23 @@ mod app {
         }
     }
 
-    fn send_buf(ctx: &mut idle::Context, out_buf: &[u8]) {
+    fn send_buf(ctx: &mut idle::Context<'_>, out_buf: &[u8]) {
         trace!("out_buf: {:?}", out_buf);
-        use rtic::Mutex;
-        let nbytes = ctx
-            .shared
-            .serial
-            .lock(|serial| serial.write(out_buf).unwrap());
-        assert_eq!(nbytes, out_buf.len());
+        match ctx.shared.serial.lock(|serial| serial.write(out_buf)) {
+            Ok(nbytes) if nbytes == out_buf.len() => {}
+            Ok(nbytes) => warn!("only sent {} of {} bytes", nbytes, out_buf.len()),
+            Err(e) => warn!("error sending data: {}", defmt::Debug2Format(&e)),
+        }
     }
 
+    /// The uppercase hexadecimal digit of the lower 4 bits of `inchar`.
     const fn hexchar(inchar: u8) -> u8 {
         let lower_4_bits = inchar & 0x0F;
+        // These cannot overflow because `lower_4_bits` is at most 0x0F.
         if lower_4_bits < 0x0A {
-            lower_4_bits + b'0'
+            lower_4_bits.wrapping_add(b'0')
         } else {
-            lower_4_bits + (b'A' - 0x0A)
+            lower_4_bits.wrapping_add(b'A' - 0x0A)
         }
     }
 }

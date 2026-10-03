@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 //! This build script copies the `memory.x` file from the crate root into
 //! a directory where the linker can always find it at build time.
 //! For many projects this is optional, as the linker always searches the
@@ -13,14 +15,11 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    File::create(out.join("memory.x"))
-        .unwrap()
-        .write_all(include_bytes!("memory.x"))
-        .unwrap();
+    let out = &PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR not set")?);
+    File::create(out.join("memory.x"))?.write_all(include_bytes!("memory.x"))?;
     println!("cargo:rustc-link-search={}", out.display());
 
     // By default, Cargo will re-run a build script whenever
@@ -28,4 +27,5 @@ fn main() {
     // here, we ensure the build script is only re-run when
     // `memory.x` is changed.
     println!("cargo:rerun-if-changed=memory.x");
+    Ok(())
 }
