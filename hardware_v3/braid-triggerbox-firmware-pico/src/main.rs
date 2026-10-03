@@ -35,8 +35,6 @@ mod app {
     const SCAN_TIME: fugit::Duration<u32, 1, 1_000_000> =
         fugit::Duration::<u32, 1, 1_000_000>::from_ticks(SCAN_TIME_US);
 
-    static mut EVENT_QUEUE: Queue<UsbEvent, Q_SZ> = Queue::new();
-
     #[shared]
     struct Shared {
         serial: SerialPort<'static, UsbBus>,
@@ -61,7 +59,10 @@ mod app {
         clock_scale: EmulatedNanoPwmClock,
     }
 
-    #[init(local = [usb_bus: Option<UsbBusAllocator<UsbBus>> = None])]
+    #[init(local = [
+        usb_bus: Option<UsbBusAllocator<UsbBus>> = None,
+        event_queue: Queue<UsbEvent, Q_SZ> = Queue::new(),
+    ])]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         let core = ctx.core;
 
@@ -148,7 +149,7 @@ mod app {
 
         let packet_parser = PacketParser::new();
 
-        let (event_tx, event_rx) = unsafe { EVENT_QUEUE.split() };
+        let (event_tx, event_rx) = ctx.local.event_queue.split();
 
         static_assertions::const_assert_eq!(hexchar(0x00), b'0');
         static_assertions::const_assert_eq!(hexchar(0x01), b'1');
