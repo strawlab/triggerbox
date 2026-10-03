@@ -6,7 +6,7 @@ use panic_probe as _;
 
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
-    use embedded_hal::digital::v2::OutputPin;
+    use embedded_hal::digital::OutputPin;
 
     use heapless::spsc::{Consumer, Producer, Queue};
 
@@ -19,7 +19,7 @@ mod app {
         XOSC_CRYSTAL_FREQ,
     };
 
-    use embedded_hal::PwmPin;
+    use embedded_hal::pwm::SetDutyCycle;
 
     use usb_device::{class_prelude::*, prelude::*};
     use usbd_serial::SerialPort;
@@ -57,8 +57,8 @@ mod app {
         >,
         usb_dev: UsbDevice<'static, UsbBus>,
         packet_parser: PacketParser<'static>,
-        event_tx: Producer<'static, UsbEvent, Q_SZ>,
-        event_rx: Consumer<'static, UsbEvent, Q_SZ>,
+        event_tx: Producer<'static, UsbEvent>,
+        event_rx: Consumer<'static, UsbEvent>,
         pwm_cycle: u8,
         /// A cached copy of what our PWM clock is doing.
         clock_scale: EmulatedNanoPwmClock,
@@ -95,9 +95,12 @@ mod app {
         let serial = SerialPort::new(usb_bus.as_ref().unwrap());
 
         let usb_dev = UsbDeviceBuilder::new(usb_bus.as_ref().unwrap(), UsbVidPid(0x16c0, 0x27dd))
-            .manufacturer("Straw Lab")
-            .product("Triggerbox RP2040")
-            // .serial_number("TEST")
+            .strings(&[
+                StringDescriptors::default()
+                    .manufacturer("Straw Lab")
+                    .product("Triggerbox RP2040"), // .serial_number("TEST")
+            ])
+            .unwrap()
             .device_class(2)
             .build();
 
@@ -140,7 +143,7 @@ mod app {
             let channel0 = &mut pwm0.channel_a;
             channel0.output_to(pins.gpio0);
 
-            channel0.set_duty(top / 100);
+            channel0.set_duty_cycle(top / 100).unwrap();
             pwm0.enable();
 
             pwm0.enable_interrupt(); // call pwm_irq
@@ -341,8 +344,8 @@ mod app {
                     // Output channel B on PWM0 to the GP1 pin
                     let channel1 = &mut pwm0.channel_b;
 
-                    channel0.set_duty(duty0);
-                    channel1.set_duty(led_duty);
+                    channel0.set_duty_cycle(duty0).unwrap();
+                    channel1.set_duty_cycle(led_duty).unwrap();
 
                     pwm0.set_top(top);
                     pwm0.set_div_int(div_int);
