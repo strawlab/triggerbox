@@ -24,19 +24,19 @@ tokio = { version = "1.53", default-features = false, features = [
 ] }
 tokio-serial = "5.5.0"
 log = "0.4.34"
-serde = "1.0.229"
 nalgebra = "0.35"
 chrono = { version = "0.4.45", default-features = false, features = [
     "clock",
     "std",
-    "wasmbind",
 ] }
 lstsq = "0.8.0"
-env_logger = "0.11.11"
 crc = "3.4"
-clap = { version = "4.6", features = ["derive"] }
 
 braid-triggerbox-comms = { version = "0.1", path = "braid-triggerbox-comms" }
+
+[dev-dependencies]
+clap = { version = "4.6", features = ["derive"] }
+env_logger = "0.11.11"
 
 [workspace]
 members = ["braid-triggerbox-comms"]
