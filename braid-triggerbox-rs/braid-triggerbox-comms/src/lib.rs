@@ -14,8 +14,9 @@ extern crate core as std;
 
 pub const DEVICE_FIRMWARE_VERSION: u8 = 14;
 
-type Instant = fugit::Instant<u64, 1, 1_000_000>;
-type Duration = fugit::Duration<u64, 1, 1_000_000>;
+/// Timestamp with microsecond resolution.
+pub type Instant = fugit::MonotonicTimerInstantU64<1_000_000>;
+type Duration = fugit::MicrosDurationU64;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(not(feature = "std"), derive(Format))]

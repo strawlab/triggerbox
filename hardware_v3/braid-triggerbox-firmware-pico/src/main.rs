@@ -219,6 +219,7 @@ mod app {
         match read_result {
             Ok(count) if count > 0 => {
                 let now_usec = ctx.shared.timer.lock(|timer| timer.get_counter());
+                let now_usec = braid_triggerbox_comms::Instant::from_ticks(now_usec.ticks());
                 // TODO: do not parse packets in IRQ
                 match ctx.local.packet_parser.got_buf(now_usec, &buf[..count]) {
                     Ok(ev) => ctx.local.event_tx.enqueue(ev).ok().unwrap(),
