@@ -1,2 +1,4 @@
+# Libraries do not commit a lockfile, but the firmware (a binary) does.
 Cargo.lock
+!/hardware_v3/braid-triggerbox-firmware-pico/Cargo.lock
 target
