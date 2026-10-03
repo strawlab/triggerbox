@@ -11,12 +11,19 @@ Based on [Project template for rp2040-hal](https://github.com/rp-rs/rp2040-proje
 
 It includes all of the `knurling-rs` tooling as showcased in https://github.com/knurling-rs/app-template (`defmt`, `defmt-rtt`, `panic-probe`, `flip-link`) to make development as easy as possible.
 
-`probe-run` is configured as the default runner, so you can start your program as easy as
+[`picotool`](https://github.com/raspberrypi/picotool) is configured as the
+default runner. Boot the Pico into bootloader mode (hold BOOTSEL while plugging
+it in) and then run
 ```sh
 cargo run --release
 ```
 
-If you aren't using a debugger, check out [alternative runners](#alternative-runners) for other options
+This builds the firmware, loads it over USB, verifies it and reboots the Pico
+into it. If you have a debug probe, check out [alternative
+runners](#alternative-runners).
+
+The Pico W works too. Note that its onboard LED is driven by the wireless chip,
+not GPIO25, so the LED blink in this firmware is not visible on a Pico W.
 
 <!-- TABLE OF CONTENTS -->
 <details open="open">
@@ -45,9 +52,9 @@ If you aren't using a debugger, check out [alternative runners](#alternative-run
 
 - flip-link - this allows you to detect stack-overflows on the first core, which is the only supported target for now.
 
-- probe-run. Upstream support for RP2040 was added with version 0.3.1.
+- picotool (the default runner), version 2.0 or later.
 
-- A CMSIS-DAP probe. You can use a second Raspberry Pi Pico as a CMSIS-DAP probe debugger.
+- Optionally, for debugging: probe-rs and a CMSIS-DAP probe. You can use a second Raspberry Pi Pico as a CMSIS-DAP probe debugger.
 
   - Download this file: https://github.com/majbthrd/DapperMime/releases/download/20210225/raspberry_pi_pico-DapperMime.uf2
   - Boot the Pico in bootloader mode by holding the bootset button while plugging it in
@@ -67,10 +74,9 @@ If you aren't using a debugger, check out [alternative runners](#alternative-run
 ```sh
 rustup target install thumbv6m-none-eabi
 cargo install flip-link
-# This is our suggested default 'runner'
-cargo install probe-run
-# If you want to use elf2uf2-rs instead of probe-run, instead do...
-cargo install elf2uf2-rs --locked
+# The default 'runner'. On macOS:
+brew install picotool
+# On other platforms, see https://github.com/raspberrypi/picotool
 ```
 
 </details>
@@ -88,6 +94,9 @@ For a release build
 ```sh
 cargo run --release
 ```
+
+`defmt` log output is only shown when using the debug probe runner (see
+[alternative runners](#alternative-runners)).
 
 If you do not specify a DEFMT_LOG level, it will be set to `debug`.
 That means `println!("")`, `info!("")` and `debug!("")` statements will be printed.
@@ -134,53 +143,44 @@ cargo run
 <details open="open">
   <summary><h2 style="display: inline-block" id="alternative-runners">Alternative runners</h2></summary>
 
-If you don't have a debug probe or if you want to do interactive debugging you can set up an alternative runner for cargo.
+The runner is set in `.cargo/config.toml`. Some alternatives are listed below.
 
-Some of the options for your `runner` are listed below:
+* **Loading with picotool (default)**
 
-* **Loading a UF2 over USB**
-  *Step 1* - Install [`elf2uf2-rs`](https://github.com/JoNil/elf2uf2-rs):
+  ```toml
+  runner = "picotool load -u -v -x -t elf"
+  ```
+
+  picotool talks to the RP2040 bootloader over its PICOBOOT USB interface. The
+  Pico must be in bootloader mode (hold BOOTSEL while plugging it in).
+
+* **Loading a UF2 over USB mass storage**
 
   ```console
   $ cargo install elf2uf2-rs --locked
   ```
 
-  *Step 2* - Make sure your .cargo/config contains the following
-
   ```toml
-  [target.thumbv6m-none-eabi]
   runner = "elf2uf2-rs -d"
   ```
 
-  The `thumbv6m-none-eabi` target may be replaced by the all-Arm wildcard
-  `'cfg(all(target_arch = "arm", target_os = "none"))'`.
+  This builds a UF2 file and copies it to the `RPI-RP2` drive that appears in
+  bootloader mode. On Linux, you need to mount the drive first. On recent macOS
+  versions, writing to this drive can hang indefinitely, which is why picotool
+  is the default.
 
-  *Step 3* - Boot your RP2040 into "USB Bootloader mode", typically by rebooting
-  whilst holding some kind of "Boot Select" button. On Linux, you will also need
-  to 'mount' the device, like you would a USB Thumb Drive.
-
-  *Step 4* - Use `cargo run`, which will compile the code and started the
-  specified 'runner'. As the 'runner' is the elf2uf2-rs tool, it will build a UF2
-  file and copy it to your RP2040.
+* **Using a debug probe**
 
   ```console
-  $ cargo run --release --example pico_pwm_blink
+  $ cargo install probe-rs-tools --locked
   ```
 
-* **Loading with picotool**
-  As ELF files produced by compiling Rust code are completely compatible with ELF
-  files produced by compiling C or C++ code, you can also use the Raspberry Pi
-  tool [picotool](https://github.com/raspberrypi/picotool). The only thing to be
-  aware of is that picotool expects your ELF files to have a `.elf` extension, and
-  by default Rust does not give the ELF files any extension. You can fix this by
-  simply renaming the file.
+  ```toml
+  runner = "probe-rs run --chip RP2040"
+  ```
 
-  This means you can't easily use it as a cargo runner - yet.
-
-  Also of note is that the special
-  [pico-sdk](https://github.com/raspberrypi/pico-sdk) macros which hide
-  information in the ELF file in a way that `picotool info` can read it out, are
-  not supported in Rust. An alternative is TBC.
+  This needs a CMSIS-DAP probe (see [requirements](#requirements)) but does not
+  need the Pico to be in bootloader mode, and it shows `defmt` log output.
 
 </details>
 
