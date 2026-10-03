@@ -17,9 +17,13 @@ jobs:
       matrix:
         runs-on: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.runs-on }}
+    env:
+      # setup-arduino-cli (even its latest release) targets the deprecated
+      # Node.js 20. Run it on Node.js 24.
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v3
-      - uses: arduino/setup-arduino-cli@v1.1.2
+      - uses: actions/checkout@v7
+      - uses: arduino/setup-arduino-cli@v2.0.0
       - name: Install platform
         run: |
           arduino-cli core update-index
@@ -36,7 +40,7 @@ jobs:
       run:
         working-directory: braid-triggerbox-rs
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       - name: Install update apt repos
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
@@ -60,7 +64,7 @@ jobs:
       run:
         working-directory: hardware_v3/braid-triggerbox-firmware-pico
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       - name: Install update apt repos
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
         if: matrix.runs-on == 'ubuntu-latest'
@@ -81,7 +85,7 @@ jobs:
       - name: Create README.txt
         run: echo "Hold down the BOOTSEL button when you plug in your Pico. It will appear as a drive onto which you should drag the UF2 file." > artifacts/README.txt
       - name: Archive UF2 firmware file
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
-          name: braid-triggerbox-firmware-pico
+          name: braid-triggerbox-firmware-pico-${{ matrix.runs-on }}
           path: hardware_v3/braid-triggerbox-firmware-pico/artifacts/*
