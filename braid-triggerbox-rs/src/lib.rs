@@ -331,7 +331,8 @@ impl TriggerboxDevice {
                 self.write(b"S1").await?;
             }
             Cmd::SetDeviceName(name) => {
-                let computed_crc = format!("{:X}", arduino_udev::CRC_MAXIM.checksum(&name));
+                // The device reads exactly two hex digits.
+                let computed_crc = format!("{:02X}", arduino_udev::CRC_MAXIM.checksum(&name));
                 trace!("computed CRC: {computed_crc:?}");
 
                 self.write(b"N=").await?;
