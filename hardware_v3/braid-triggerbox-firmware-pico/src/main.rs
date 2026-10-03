@@ -36,7 +36,7 @@ mod app {
     use crc::{CRC_8_MAXIM_DOW, Crc};
 
     /// Capacity of the queue of events from the host.
-    const Q_SZ: usize = 4;
+    const Q_SZ: usize = 16;
 
     const CRC_MAXIM: Crc<u8> = Crc::<u8>::new(&CRC_8_MAXIM_DOW);
 
@@ -232,16 +232,22 @@ mod app {
         {
             let now_usec = ctx.shared.timer.lock(|timer| timer.get_counter());
             let now_usec = braid_triggerbox_comms::Instant::from_ticks(now_usec.ticks());
-            let data = buf.get(..count).unwrap_or_default();
+            let mut data = buf.get(..count).unwrap_or_default();
             // TODO: do not parse packets in IRQ
-            match ctx.local.packet_parser.got_buf(now_usec, data) {
-                Ok(ev) => {
-                    if let Err(ev) = ctx.local.event_tx.enqueue(ev) {
-                        warn!("event queue full, dropping event {}", ev);
+            // One USB read can hold several commands, so parse until no
+            // complete command is left. This terminates because every result
+            // except `AwaitingMoreData` consumes buffered data.
+            loop {
+                match ctx.local.packet_parser.got_buf(now_usec, data) {
+                    Ok(ev) => {
+                        if let Err(ev) = ctx.local.event_tx.enqueue(ev) {
+                            warn!("event queue full, dropping event {}", ev);
+                        }
                     }
+                    Err(braid_triggerbox_comms::Error::AwaitingMoreData) => break,
+                    Err(e) => warn!("error parsing: {}", e),
                 }
-                Err(braid_triggerbox_comms::Error::AwaitingMoreData) => {}
-                Err(e) => warn!("error parsing: {}", e),
+                data = &[];
             }
         }
     }
