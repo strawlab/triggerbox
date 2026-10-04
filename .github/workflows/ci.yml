@@ -163,7 +163,7 @@ jobs:
         run: cargo install flip-link --locked
       - name: Install elf2uf2-rs
         if: matrix.runs-on == 'ubuntu-latest'
-        run: cargo install --git https://github.com/strawlab/elf2uf2-rs
+        run: cargo install elf2uf2-rs --version 2.2.0 --locked
       - name: Run fmt
         run: cargo fmt --check
       - name: Run clippy
