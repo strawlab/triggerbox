@@ -147,54 +147,71 @@ struct TimedSample {
 enum DevicePacket {
     Timestamp(TimedSample),
     Version(TimedSample),
-    Unknown(u8),
+    /// Confirmation of new analog output values.
+    AOutConfirm(TimedSample),
+    /// A byte which does not start a valid packet was dropped.
+    Skipped(SkipReason),
 }
 
-/// Remove the first complete packet from `buf` and return it.
+/// Why a byte received from the device was dropped.
+#[derive(Debug, PartialEq, Eq)]
+enum SkipReason {
+    UnknownPacketType(u8),
+    BadPayloadLength { packet_type: u8, payload_len: u8 },
+    ChecksumMismatch,
+}
+
+/// Every packet sent by the device has a 7 byte payload.
+const PAYLOAD_LEN: u8 = 7;
+
+/// Remove the first packet from `buf` and return it.
 ///
-/// Returns `Ok(None)` if `buf` does not yet hold a complete packet.
-fn take_packet(buf: &mut Vec<u8>) -> Result<Option<DevicePacket>> {
+/// If `buf` does not start with a valid packet, the first byte is removed and
+/// [`DevicePacket::Skipped`] is returned, so that the next call can find the
+/// start of the next packet. Returns `None` if `buf` does not yet hold a
+/// complete packet.
+fn take_packet(buf: &mut Vec<u8>) -> Option<DevicePacket> {
     // A packet is a header (type and payload length), the payload and a
     // checksum.
     let [packet_type, payload_len, rest @ ..] = buf.as_slice() else {
-        return Ok(None);
+        return None;
     };
-    let packet_type = *packet_type;
-    let payload_len = usize::from(*payload_len);
-    let Some((payload, [expected_chksum, ..])) = rest.split_at_checked(payload_len) else {
-        return Ok(None);
-    };
+    let (packet_type, payload_len) = (*packet_type, *payload_len);
 
-    let actual_chksum = payload.iter().fold(0u8, |acc, x| acc.wrapping_add(*x));
-    if actual_chksum != *expected_chksum {
-        anyhow::bail!("checksum mismatch");
-    }
-    trace!("checksum OK");
-
-    let packet = match (packet_type, payload) {
-        (b'P' | b'V', &[value, p0, p1, p2, p3, c0, c1]) => {
+    let skip_reason = if !matches!(packet_type, b'P' | b'V' | b'O') {
+        Some(SkipReason::UnknownPacketType(packet_type))
+    } else if payload_len != PAYLOAD_LEN {
+        Some(SkipReason::BadPayloadLength {
+            packet_type,
+            payload_len,
+        })
+    } else {
+        let (payload, tail) = rest.split_first_chunk::<7>()?;
+        let [expected_chksum, ..] = tail else {
+            return None;
+        };
+        let actual_chksum = payload.iter().fold(0u8, |acc, x| acc.wrapping_add(*x));
+        if actual_chksum == *expected_chksum {
+            let [value, p0, p1, p2, p3, c0, c1] = *payload;
             let sample = TimedSample {
                 value,
                 pulsenumber: u32::from_le_bytes([p0, p1, p2, p3]),
                 count: u16::from_le_bytes([c0, c1]),
             };
-            if packet_type == b'P' {
-                DevicePacket::Timestamp(sample)
-            } else {
-                DevicePacket::Version(sample)
-            }
+            let packet = match packet_type {
+                b'P' => DevicePacket::Timestamp(sample),
+                b'V' => DevicePacket::Version(sample),
+                _ => DevicePacket::AOutConfirm(sample),
+            };
+            // header (2) + payload + checksum (1)
+            buf.drain(..usize::from(PAYLOAD_LEN).saturating_add(3));
+            return Some(packet);
         }
-        (b'P' | b'V', _) => anyhow::bail!(
-            "unexpected payload length {payload_len} for packet type '{}'",
-            char::from(packet_type)
-        ),
-        _ => DevicePacket::Unknown(packet_type),
+        Some(SkipReason::ChecksumMismatch)
     };
 
-    // header (2) + payload + checksum (1)
-    let n_used = payload_len.saturating_add(3);
-    buf.drain(..n_used);
-    Ok(Some(packet))
+    buf.drain(..1);
+    skip_reason.map(DevicePacket::Skipped)
 }
 
 /// Truncate `x` towards zero to a `u16`, or `None` if out of range.
@@ -574,12 +591,15 @@ impl TriggerboxDevice {
     }
 
     async fn handle_data_from_device(&mut self, buf: &mut Vec<u8>) -> Result<()> {
-        while let Some(packet) = take_packet(buf)? {
+        while let Some(packet) = take_packet(buf) {
             match packet {
                 DevicePacket::Timestamp(sample) => self.handle_returned_timestamp(sample).await?,
                 DevicePacket::Version(sample) => self.handle_version(&sample)?,
-                DevicePacket::Unknown(packet_type) => {
-                    warn!("ignoring unknown packet type {packet_type}");
+                DevicePacket::AOutConfirm(sample) => {
+                    debug!("ignoring AOUT confirmation {}", sample.value);
+                }
+                DevicePacket::Skipped(reason) => {
+                    warn!("dropped a byte received from the device: {reason:?}");
                 }
             }
         }
@@ -717,46 +737,82 @@ mod tests {
         assert!((offset - 12.0).abs() < epsilon);
     }
 
+    fn sample(value: u8, pulsenumber: u32, count: u16) -> TimedSample {
+        TimedSample {
+            value,
+            pulsenumber,
+            count,
+        }
+    }
+
     #[test]
     fn take_packets() {
         let mut buf = packet(b'P', &[3, 1, 0, 0, 0, 2, 0]);
         buf.extend(packet(b'V', &[14, 0, 0, 0, 0, 0, 0]));
-        buf.extend(packet(b'X', &[]));
+        buf.extend(packet(b'O', &[b'x', 0, 0, 0, 0, 0, 0]));
         // A partial packet.
         buf.extend(&[b'P', 7, 0]);
 
         assert_eq!(
-            take_packet(&mut buf).unwrap(),
-            Some(DevicePacket::Timestamp(TimedSample {
-                value: 3,
-                pulsenumber: 1,
-                count: 2,
-            }))
+            take_packet(&mut buf),
+            Some(DevicePacket::Timestamp(sample(3, 1, 2)))
         );
         assert_eq!(
-            take_packet(&mut buf).unwrap(),
-            Some(DevicePacket::Version(TimedSample {
-                value: 14,
-                pulsenumber: 0,
-                count: 0,
-            }))
+            take_packet(&mut buf),
+            Some(DevicePacket::Version(sample(14, 0, 0)))
         );
         assert_eq!(
-            take_packet(&mut buf).unwrap(),
-            Some(DevicePacket::Unknown(b'X'))
+            take_packet(&mut buf),
+            Some(DevicePacket::AOutConfirm(sample(b'x', 0, 0)))
         );
-        assert_eq!(take_packet(&mut buf).unwrap(), None);
+        assert_eq!(take_packet(&mut buf), None);
         assert_eq!(buf, [b'P', 7, 0]);
     }
 
+    /// Take packets until `buf` is exhausted, returning the valid ones and the
+    /// number of skipped bytes.
+    fn take_all(buf: &mut Vec<u8>) -> (Vec<DevicePacket>, usize) {
+        let (skipped, packets): (Vec<_>, Vec<_>) = std::iter::from_fn(|| take_packet(buf))
+            .partition(|packet| matches!(packet, DevicePacket::Skipped(_)));
+        (packets, skipped.len())
+    }
+
     #[test]
-    fn take_packet_errors() {
+    fn take_packet_resynchronizes() {
+        let good = packet(b'P', &[9, 8, 0, 0, 0, 6, 0]);
+
+        // A packet with a bad checksum, then a good packet.
         let mut buf = packet(b'P', &[1, 2, 3, 4, 5, 6, 7]);
         *buf.last_mut().unwrap() ^= 0xFF;
-        assert!(take_packet(&mut buf).is_err());
+        assert_eq!(
+            take_packet(&mut buf.clone()),
+            Some(DevicePacket::Skipped(SkipReason::ChecksumMismatch))
+        );
+        buf.extend(&good);
+        let (packets, n_skipped) = take_all(&mut buf);
+        assert_eq!(packets, [DevicePacket::Timestamp(sample(9, 8, 6))]);
+        assert_eq!(n_skipped, 10);
+        assert_eq!(buf, Vec::<u8>::new());
 
+        // A packet with a bad payload length, then a good packet.
         let mut buf = packet(b'V', &[1, 2, 3]);
-        assert!(take_packet(&mut buf).is_err());
+        assert_eq!(
+            take_packet(&mut buf.clone()),
+            Some(DevicePacket::Skipped(SkipReason::BadPayloadLength {
+                packet_type: b'V',
+                payload_len: 3
+            }))
+        );
+        buf.extend(&good);
+        let (packets, _) = take_all(&mut buf);
+        assert_eq!(packets, [DevicePacket::Timestamp(sample(9, 8, 6))]);
+
+        // Garbage, then a good packet.
+        let mut buf = b"garbage".to_vec();
+        buf.extend(&good);
+        let (packets, n_skipped) = take_all(&mut buf);
+        assert_eq!(packets, [DevicePacket::Timestamp(sample(9, 8, 6))]);
+        assert_eq!(n_skipped, 7);
     }
 
     #[test]
