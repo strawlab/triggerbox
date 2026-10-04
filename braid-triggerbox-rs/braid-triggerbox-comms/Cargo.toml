@@ -8,6 +8,8 @@ rust-version = "1.85"
 description = "host and device communication for Braid triggerbox"
 repository = "https://github.com/strawlab/triggerbox"
 homepage = "https://github.com/strawlab/triggerbox/tree/main/braid-triggerbox-rs/braid-triggerbox-comms"
+keywords = ["braid", "camera", "trigger", "synchronization"]
+categories = ["hardware-support", "embedded", "no-std"]
 
 [lints]
 workspace = true

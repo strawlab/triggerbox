@@ -8,6 +8,10 @@ repository = "https://github.com/strawlab/triggerbox"
 homepage = "https://github.com/strawlab/triggerbox/tree/main/braid-triggerbox-rs"
 edition = "2024"
 rust-version = "1.89"
+keywords = ["braid", "camera", "trigger", "synchronization"]
+categories = ["hardware-support", "science"]
+# The workspace config files are not part of the package.
+exclude = ["clippy.toml", "release-plz.toml"]
 
 [lints]
 workspace = true
