@@ -10,7 +10,7 @@ use braid_triggerbox::{Cmd, make_trig_fps_cmd, name_display, to_name_type};
 use clap::{Parser, ValueEnum};
 
 #[cfg(target_os = "macos")]
-const DEFAULT_DEVICE_PATH: &str = "/dev/tty.usbmodem1423";
+const DEFAULT_DEVICE_PATH: &str = "/dev/cu.usbmodem1101";
 
 #[cfg(target_os = "linux")]
 const DEFAULT_DEVICE_PATH: &str = "/dev/ttyUSB0";
@@ -50,7 +50,7 @@ struct Cli {
 
     /// Sleep duration to allow device to wake up (in seconds)
     ///
-    /// Emperically, an Arduino Nano requires 7 seconds to wake up.
+    /// Empirically, an Arduino Nano requires 7 seconds to wake up.
     #[arg(long, default_value_t = 7.0)]
     sleep: f32,
 }
@@ -66,8 +66,6 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
     let opt = Cli::parse();
     info!("braid_triggerbox starting. Run mode: {:?}", opt.run_mode);
-
-    let mut quit_early = false;
 
     let (tx, rx) = tokio::sync::mpsc::channel(10);
 
@@ -87,7 +85,6 @@ async fn main() -> anyhow::Result<()> {
         let actual_name = to_name_type(&set_device_name)?;
         println!("Setting name to {}", name_display(&Some(actual_name)));
         tx.send(Cmd::SetDeviceName(actual_name)).await?;
-        quit_early = true;
     }
 
     tx.send(Cmd::SetAOut((opt.aout1, opt.aout2))).await?;
@@ -115,10 +112,6 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_millis(opt.max_acceptable_measurement_error);
 
     println!("Connecting to trigger device.");
-
-    if quit_early {
-        println!("Should quit early, but cannot");
-    }
 
     let sleep_dur = std::time::Duration::try_from_secs_f32(opt.sleep)
         .with_context(|| format!("invalid sleep duration {}", opt.sleep))?;
