@@ -162,6 +162,7 @@ jobs:
       - name: Install flip-link
         run: cargo install flip-link --locked
       - name: Install elf2uf2-rs
+        if: matrix.runs-on == 'ubuntu-latest'
         run: cargo install --git https://github.com/strawlab/elf2uf2-rs
       - name: Run fmt
         run: cargo fmt --check
@@ -169,14 +170,20 @@ jobs:
         run: cargo clippy --release --locked -- --deny=warnings
       - name: Build ELF
         run: cargo build --release --locked
+      # The firmware is built on every OS to check that development works
+      # there, but the UF2 is only made and uploaded once.
       - name: Make artifacts directory
+        if: matrix.runs-on == 'ubuntu-latest'
         run: mkdir -p artifacts
       - name: Build UF2
+        if: matrix.runs-on == 'ubuntu-latest'
         run: elf2uf2-rs target/thumbv6m-none-eabi/release/braid-triggerbox-firmware-pico artifacts/braid-triggerbox-firmware-pico.uf2
       - name: Create README.txt
+        if: matrix.runs-on == 'ubuntu-latest'
         run: echo "Hold down the BOOTSEL button when you plug in your Pico. It will appear as a drive onto which you should drag the UF2 file." > artifacts/README.txt
       - name: Archive UF2 firmware file
+        if: matrix.runs-on == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
         with:
-          name: braid-triggerbox-firmware-pico-${{ matrix.runs-on }}
+          name: braid-triggerbox-firmware-pico
           path: hardware_v3/braid-triggerbox-firmware-pico/artifacts/*
