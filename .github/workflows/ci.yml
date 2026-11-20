@@ -27,13 +27,9 @@ jobs:
       matrix:
         runs-on: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.runs-on }}
-    env:
-      # setup-arduino-cli (even its latest release) targets the deprecated
-      # Node.js 20. Run it on Node.js 24.
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v7
-      - uses: arduino/setup-arduino-cli@v2.0.0
+      - uses: arduino/setup-arduino-cli@v2.1.0
       - name: Install platform
         run: |
           arduino-cli core update-index
