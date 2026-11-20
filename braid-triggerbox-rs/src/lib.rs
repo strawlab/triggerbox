@@ -80,7 +80,6 @@ pub struct ClockModel {
 /// A raw clock measurement.
 #[derive(Debug)]
 pub struct TriggerClockInfoRow {
-    // changes to this should update BraidMetadataSchemaTag
     /// Host time at which the measurement was requested.
     pub start_timestamp: Timestamp,
     /// Triggerbox pulse number.
