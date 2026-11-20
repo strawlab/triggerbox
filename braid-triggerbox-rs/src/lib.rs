@@ -8,7 +8,7 @@ mod arduino_udev;
 use crate::arduino_udev::serial_handshake;
 
 use anyhow::{Context, Result};
-use chrono::Duration;
+use jiff::{SignedDuration, Timestamp};
 use log::{debug, error, info, trace, warn};
 
 use nalgebra as na;
@@ -82,13 +82,13 @@ pub struct ClockModel {
 pub struct TriggerClockInfoRow {
     // changes to this should update BraidMetadataSchemaTag
     /// Host time at which the measurement was requested.
-    pub start_timestamp: chrono::DateTime<chrono::Utc>,
+    pub start_timestamp: Timestamp,
     /// Triggerbox pulse number.
     pub framecount: i64,
     /// Fraction of the current pulse elapsed, scaled to 0-255.
     pub tcnt: u8,
     /// Host time at which the measurement was received.
-    pub stop_timestamp: chrono::DateTime<chrono::Utc>,
+    pub stop_timestamp: Timestamp,
 }
 
 /// A Braid Triggerbox device.
@@ -96,17 +96,17 @@ pub struct TriggerboxDevice {
     icr1_and_prescaler: Option<TopAndPrescaler>,
     version_check_done: bool,
     qi: u8,
-    queries: BTreeMap<u8, chrono::DateTime<chrono::Utc>>,
+    queries: BTreeMap<u8, Timestamp>,
     ser: tokio_serial::SerialStream,
     outq: Receiver<Cmd>,
-    vquery_time: chrono::DateTime<chrono::Utc>,
-    last_time: chrono::DateTime<chrono::Utc>,
+    vquery_time: Timestamp,
+    last_time: Timestamp,
     past_data: Vec<(f64, f64)>,
     allow_requesting_clock_sync: bool,
     on_new_model_cb: ClockModelCallback,
     triggerbox_data_tx: Option<Sender<TriggerClockInfoRow>>,
-    max_acceptable_measurement_error: Duration,
-    query_dt: Duration,
+    max_acceptable_measurement_error: SignedDuration,
+    query_dt: SignedDuration,
 }
 
 impl std::fmt::Debug for TriggerboxDevice {
@@ -263,14 +263,15 @@ impl TriggerboxDevice {
             sleep_dur,
         } = opts;
         let baud_rate = 115_200;
-        let max_acceptable_measurement_error = Duration::from_std(max_acceptable_measurement_error)
-            .context("max_acceptable_measurement_error out of range")?;
-        let query_dt = Duration::from_std(query_dt).context("query_dt out of range")?;
-        let now = chrono::Utc::now();
+        let max_acceptable_measurement_error =
+            SignedDuration::try_from(max_acceptable_measurement_error)
+                .context("max_acceptable_measurement_error out of range")?;
+        let query_dt = SignedDuration::try_from(query_dt).context("query_dt out of range")?;
+        let now = Timestamp::now();
 
         // wait 1 second before first version query
-        let vquery_time = add_duration(now, Duration::seconds(1))?;
-        let last_time = add_duration(vquery_time, Duration::seconds(1))?;
+        let vquery_time = add_duration(now, SignedDuration::from_secs(1))?;
+        let last_time = add_duration(vquery_time, SignedDuration::from_secs(1))?;
 
         debug!("Opening device at path {device_path}");
 
@@ -388,7 +389,7 @@ impl TriggerboxDevice {
     pub async fn run_forever(mut self: TriggerboxDevice) -> Result<()> {
         let query_dt = self.query_dt;
 
-        let connect_time = chrono::Utc::now();
+        let connect_time = Timestamp::now();
 
         let mut buf: Vec<u8> = Vec::new();
         let mut read_buf: Vec<u8> = vec![0; 100];
@@ -439,11 +440,11 @@ impl TriggerboxDevice {
                 new_data = false;
             }
 
-            let now = chrono::Utc::now();
+            let now = Timestamp::now();
 
             if self.version_check_done {
                 if self.allow_requesting_clock_sync
-                    && (now.signed_duration_since(self.last_time) > query_dt)
+                    && (now.duration_since(self.last_time) > query_dt)
                 {
                     // request sample
                     debug!("making clock sample request. qi: {}, now: {now}", self.qi);
@@ -463,11 +464,11 @@ impl TriggerboxDevice {
                 }
 
                 // retry every second
-                if now.signed_duration_since(self.vquery_time) > Duration::seconds(1) {
+                if now.duration_since(self.vquery_time) > SignedDuration::from_secs(1) {
                     version_check_started = false;
                 }
                 // give up after 20 seconds
-                if now.signed_duration_since(connect_time) > Duration::seconds(20) {
+                if now.duration_since(connect_time) > SignedDuration::from_secs(20) {
                     return Err(anyhow::anyhow!("no version response"));
                 }
             }
@@ -492,7 +493,7 @@ impl TriggerboxDevice {
             count,
         } = sample;
         debug!("got returned timestamp with qi: {qi}, pulsenumber: {pulsenumber}, count: {count}");
-        let now = chrono::Utc::now();
+        let now = Timestamp::now();
         if self.queries.len() > 50 {
             self.queries.clear();
             error!("too many outstanding queries");
@@ -504,7 +505,7 @@ impl TriggerboxDevice {
         };
         trace!("this query has send_timestamp: {send_timestamp}");
 
-        let max_error = now.signed_duration_since(send_timestamp);
+        let max_error = now.duration_since(send_timestamp);
         if max_error > self.max_acceptable_measurement_error {
             debug!("clock sample took {max_error:?}. Ignoring value.");
             return Ok(());
@@ -512,12 +513,9 @@ impl TriggerboxDevice {
 
         trace!("max_error: {max_error:?}");
 
-        let half_max_error = Duration::microseconds(
-            max_error
-                .num_microseconds()
-                .context("measurement error out of range")?
-                / 2,
-        );
+        let half_max_error = max_error
+            .checked_div(2)
+            .context("measurement error out of range")?;
         let ino_time_estimate = add_duration(send_timestamp, half_max_error)?;
 
         let Some(s) = &self.icr1_and_prescaler else {
@@ -552,7 +550,7 @@ impl TriggerboxDevice {
 
         self.past_data.push((
             ino_stamp,
-            datetime_conversion::datetime_to_f64(&ino_time_estimate),
+            datetime_conversion::timestamp_to_f64(ino_time_estimate),
         ));
 
         if self.past_data.len() >= 5 {
@@ -584,7 +582,7 @@ impl TriggerboxDevice {
                 {DEVICE_FIRMWARE_VERSION})"
             );
         }
-        self.vquery_time = chrono::Utc::now();
+        self.vquery_time = Timestamp::now();
         self.version_check_done = true;
         info!("connected to triggerbox firmware version {value}");
         Ok(())
@@ -614,11 +612,8 @@ fn update_read_buffer(n_bytes_read: usize, read_buf: &[u8], buf: &mut Vec<u8>) {
     }
 }
 
-fn add_duration(
-    t: chrono::DateTime<chrono::Utc>,
-    d: Duration,
-) -> Result<chrono::DateTime<chrono::Utc>> {
-    t.checked_add_signed(d).context("time out of range")
+fn add_duration(t: Timestamp, d: SignedDuration) -> Result<Timestamp> {
+    t.checked_add(d).context("time out of range")
 }
 
 fn fit_time_model(past_data: &[(f64, f64)]) -> Result<(f64, f64, f64), &'static str> {
